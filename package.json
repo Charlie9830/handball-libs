@@ -8,6 +8,10 @@
   },
   "author": "Charlie Hall",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Charlie9830/handball-libs.git"
+  },
   "dependencies": {
     "dexie": "^2.0.4",
     "firebase": "^5.0.4",

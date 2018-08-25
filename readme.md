@@ -5,3 +5,4 @@ In this directory run:
 Navigate to the Handball Desktop or Mobile App directory and run:
     npm link handball-libs
 
+That will Symlink this module into the Global node_modules folder.
