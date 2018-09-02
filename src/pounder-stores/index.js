@@ -143,6 +143,17 @@ export class TaskMetadataStore {
     }
 }
 
+export function TaskCommentFactory(uid, text, mentions, created, createdBy, seenBy) {
+    return {
+        uid: uid,
+        text: text,
+        mentions: mentions,
+        created: created,
+        createdBy: createdBy,
+        seenBy: seenBy,
+    }
+}
+
 export function GetFreshLayout(taskListWidgetId) {
     return {i: taskListWidgetId, x: 0, y: 0, w: 6, h: 4, isFresh: true }
 }

@@ -46,13 +46,14 @@ var initialState = {
     projectLayouts: [],
     localProjectLayouts: [],
     remoteProjectLayouts: [],
-    selectedTask: {taskListWidgetId: -1, taskId: -1, isInputOpen: false, isMetadataOpen: false},
+    selectedTask: {taskListWidgetId: -1, taskId: -1, isInputOpen: false},
     selectedProjectId: -1,
     isSelectedProjectRemote: false,
     isATaskMoving: false,
     movingTaskId: -1,
     sourceTaskListId: -1,
     openCalendarId: -1,
+    openTaskInfoId: -1,
     openTaskListSettingsMenuId: -1,
     isAwaitingFirebase: false,
     projectSelectorDueDateDisplays: [],
@@ -100,6 +101,9 @@ var initialState = {
     isInRegisterMode: false,
     showCompletedTasks: false,
     isProjectMenuOpen: false,
+    isGettingTaskComments: false,
+    taskComments: [],
+    pendingTaskCommentIds: [],
 }
 
 export var appStore = createStore(

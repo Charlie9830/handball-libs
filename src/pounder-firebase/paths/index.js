@@ -2,6 +2,7 @@
 export const DIRECTORY = "directory";
 export const USERS = "users";
 export const TASKS = "tasks";
+export const TASKCOMMENTS = "taskComments";
 export const TASKLISTS = "taskLists";
 export const PROJECTS = "projects";
 export const PROJECTLAYOUTS = "projectLayouts";
