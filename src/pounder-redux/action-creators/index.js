@@ -2454,11 +2454,11 @@ function handleTasksSnapshot(getState, dispatch, isRemote, snapshot, remoteProje
         // Remote
         if (isRemote) {
             if (type === 'completedOnly') {
-                dispatch(receiveCompletedRemoteTasks(mergeRemoteTasks(tasks, remoteProjectId)));
+                dispatch(receiveCompletedRemoteTasks(mergeRemoteTasks(getState().completedRemoteTasks, tasks, remoteProjectId)));
             }
 
             if (type === 'incompletedOnly') {
-                dispatch(receiveIncompletedRemoteTasks(mergeRemoteTasks(tasks, remoteProjectId)));
+                dispatch(receiveIncompletedRemoteTasks(mergeRemoteTasks(getState().incompletedRemoteTasks, tasks, remoteProjectId)));
             }
         }
 
@@ -2475,8 +2475,8 @@ function handleTasksSnapshot(getState, dispatch, isRemote, snapshot, remoteProje
     }
 }
 
-function mergeRemoteTasks(newTasks, remoteProjectId) {
-    var filteredTasks = newTasks.filter(item => {
+function mergeRemoteTasks(mergeTarget, newTasks, remoteProjectId) {
+    var filteredTasks = mergeTarget.filter(item => {
         return item.project !== remoteProjectId;
     })
 
