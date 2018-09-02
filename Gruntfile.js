@@ -18,7 +18,8 @@ module.exports = function (grunt) {
           "libs/pounder-redux/reducers/index.js": "src/pounder-redux/reducers/index.js",
           "libs/pounder-redux/index.js": "src/pounder-redux/index.js",
           "libs/pounder-stores/index.js": "src/pounder-stores/index.js",
-          "libs/pounder-utilities/index.js": "src/pounder-utilities/index.js"
+          "libs/pounder-utilities/index.js": "src/pounder-utilities/index.js",
+          "libs/firestore-batch-paginator/index.js": "src/firestore-batch-paginator/index.js",
         }
       }
     }

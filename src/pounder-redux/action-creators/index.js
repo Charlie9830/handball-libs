@@ -1,5 +1,5 @@
 import * as ActionTypes from '../action-types/index';
-import { MultiBatch } from 'firestore-multibatch';
+import FirestoreBatchPaginator from '../../firestore-batch-paginator';
 import { USERS, PROJECTS, PROJECTLAYOUTS, TASKS, TASKLISTS, ACCOUNT, ACCOUNT_DOC_ID,
      REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY } from '../../pounder-firebase/paths';
 import { setUserUid, getUserUid } from '../../pounder-firebase';
@@ -1037,8 +1037,8 @@ function moveProjectToLocalLocationAsync(getState, getFirestore, projectId, curr
     return new Promise((resolve, reject) => {
         // Transfer Project to Local Location.
         var remoteRef = getFirestore().collection(REMOTES).doc(projectId);
-        var targetBatch = new MultiBatch(getFirestore());
-        var sourceBatch = new MultiBatch(getFirestore());
+        var targetBatch = new FirestoreBatchPaginator(getFirestore());
+        var sourceBatch = new FirestoreBatchPaginator(getFirestore());
         var requests = [];
 
         // Top Level Project Data.
@@ -1245,8 +1245,8 @@ function moveProjectToRemoteLocationAsync(getFirestore, getState, projectId, cur
     return new Promise((resolve, reject) => {
         // Transfer Project.
         var userRef = getFirestore().collection(USERS).doc(getUserUid());
-        var targetBatch = new MultiBatch(getFirestore());
-        var sourceBatch = new MultiBatch(getFirestore());
+        var targetBatch = new FirestoreBatchPaginator(getFirestore());
+        var sourceBatch = new FirestoreBatchPaginator(getFirestore());
         var requests = [];
 
         var topLevelData = ProjectFactory(
@@ -1585,7 +1585,7 @@ export function purgeCompleteTasksAsync() {
 
             // Delete those Tasks.
             // Build Batch.
-            var batch = new MultiBatch(getFirestore());
+            var batch = new FirestoreBatchPaginator(getFirestore());
             completedTaskIds.forEach(taskId => {
                 batch.delete(getFirestore().collection(TASKS).doc(taskId));
             })
@@ -1730,7 +1730,7 @@ export function removeTaskListAsync(taskListWidgetId) {
             var taskIds = collectTaskListRelatedTaskIds(getState().tasks, taskListWidgetId);
 
             // Build Batch.
-            var batch = new MultiBatch(getFirestore());
+            var batch = new FirestoreBatchPaginator(getFirestore());
 
             if (isRemovingLastTaskList(getState, selectedProjectId)) {
                 // We are about to remove the last Task list. Queue up a request to delete any remaining Project Layouts.
@@ -1811,7 +1811,7 @@ export function removeProjectAsync(projectId) {
             var taskIds = collectProjectRelatedTaskIds(getState().tasks, projectId);
 
             // Build Updates.
-            var batch = new MultiBatch(getFirestore());
+            var batch = new FirestoreBatchPaginator(getFirestore());
 
             // Local
             // TaskLists.
