@@ -1,10 +1,10 @@
 import * as ActionTypes from '../action-types/index';
 import { MultiBatch } from 'firestore-multibatch';
 import { USERS, PROJECTS, PROJECTLAYOUTS, TASKS, TASKLISTS, ACCOUNT, ACCOUNT_DOC_ID,
-     REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY } from '../../pounder-firebase/paths';
+     REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY, TASKCOMMENTS } from '../../pounder-firebase/paths';
 import { setUserUid, getUserUid } from '../../pounder-firebase';
 import { ProjectStore, ProjectLayoutStore, TaskListStore, TaskListSettingsStore, TaskStore, CssConfigStore, MemberStore,
-InviteStore, RemoteStore, TaskMetadataStore, DirectoryStore, ProjectFactory, ChecklistSettingsFactory} from '../../pounder-stores';
+InviteStore, RemoteStore, TaskMetadataStore, DirectoryStore, ProjectFactory, ChecklistSettingsFactory, TaskCommentFactory} from '../../pounder-stores';
 import Moment from 'moment';
 import { includeMetadataChanges } from '../index';
 import parseArgs from 'minimist';
@@ -155,9 +155,10 @@ export function clearData() {
     }
 }
 
-export function closeMetadata() {
+export function openTaskInfo(taskId) {
     return {
-        type: ActionTypes.CLOSE_METADATA,
+        type: ActionTypes.OPEN_TASK_INFO,
+        value: taskId,
     }
 }
 
@@ -580,9 +581,36 @@ export function setIsUpdateSnackbarOpen(isOpen) {
         value: isOpen,
     }
 }
+
+export function startTaskCommentsGet() {
+    return {
+        type: ActionTypes.START_TASK_COMMENTS_GET,
+    }
+}
+
+export function receiveTaskComments(comments) {
+    return {
+        type: ActionTypes.RECEIVE_TASK_COMMENTS,
+        value: comments,
+    }
+}
+
+export function setPendingTaskCommentIds(ids) {
+    return {
+        type: ActionTypes.SET_PENDING_TASK_COMMENT_IDS,
+        value: ids,
+    }
+}
+
 // Private Actions.
 // Should only be dispatched by moveTaskAsync(), as moveTaskAsync() gets the movingTaskId from the State. Calling this from elsewhere
 // could create a race Condition.
+function closeTaskInfo() {
+    return {
+        type: ActionTypes.CLOSE_TASK_INFO,
+    }
+}
+
 function endTaskMove(movingTaskId, destinationTaskListWidgetId) {
     return {
         type: ActionTypes.END_TASK_MOVE,
@@ -592,6 +620,95 @@ function endTaskMove(movingTaskId, destinationTaskListWidgetId) {
 }
 
 // Thunks
+export function closeTaskInfoAsync() {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        // Save some Info before it is destroyed by the closeTaskInfo() Action.
+        var openTaskInfoId = getState().openTaskInfoId;
+        var taskComments = [...getState().taskComments ];
+
+        dispatch(closeTaskInfo());
+
+        // Add User ID to Seenby of any Unseen Task Comments.
+        var selectedProjectId = getState().selectedProjectId;
+        if (isProjectRemote(getState, selectedProjectId) === true) {
+            var batch = getFirestore().batch();
+
+            taskComments.forEach(comment => {
+                var isUnseen = !comment.seenBy.some(id => {
+                    return id === getUserUid();
+                })
+
+                if (isUnseen === true) {
+                    var ref = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS)
+                        .doc(openTaskInfoId).collection(TASKCOMMENTS).doc(comment.uid);
+
+                    var newSeenBy = comment.seenBy;
+                    newSeenBy.push(getUserUid());
+
+                    batch.update(ref, { seenBy: newSeenBy });
+                }
+            })
+
+            console.log(batch);
+
+            batch.commit().then( () => {
+                // Success
+            }).catch(error => {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            })
+        }
+    }
+}
+
+export function getTaskCommentsAsync(taskId) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        var selectedProjectId = getState().selectedProjectId;
+        if (isProjectRemote(getState, selectedProjectId) === true) {
+            dispatch(startTaskCommentsGet());
+
+            getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId).collection(TASKCOMMENTS).get().then( snapshot => {
+                var taskComments = [];
+                snapshot.forEach(doc => {
+                    taskComments.push(doc.data());
+                })
+
+                dispatch(receiveTaskComments(taskComments));
+
+            }).catch(error => {
+                handleFirebaseSnapshotError(error, getState(), dispatch );
+            })
+        }
+    }
+}
+
+export function postNewCommentAsync(taskId, value, projectMembers, currentMetadata) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        var selectedProjectId = getState().selectedProjectId;
+
+        if (isProjectRemote(getState, selectedProjectId) === true) {
+            var mentions = [];
+            var created = Moment().toISOString();
+            var createdBy = getUserUid();
+            var seenBy = [createdBy];
+            var newCommentRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId).collection(TASKCOMMENTS).doc();
+
+            var taskComment = TaskCommentFactory(newCommentRef.id, value, mentions, created, createdBy, seenBy);
+
+            newCommentRef.set(taskComment).then( () => {
+                // Success
+            }).catch( error => {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            })
+
+            // Add to State.
+            var existingComments = [...getState().taskComments];
+            existingComments.push(taskComment);
+            dispatch(receiveTaskComments(existingComments));
+        }
+    }
+}
+
+
 export function renewChecklistAsync(taskList, isRemote, projectId, userTriggered) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         var taskListId = taskList.uid;
@@ -684,6 +801,27 @@ function unsubscribeCompletedTasks() {
     for (var projectId in remoteProjectsUnsubscribes) {
         if (remoteProjectsUnsubscribes[projectId].onlyCompletedTasks !== null) {
             remoteProjectsUnsubscribes[projectId].onlyCompletedTasks();
+        }
+    }
+}
+
+export function updateTaskNoteAsync(newValue, oldValue, taskId, currentMetadata) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+
+        if (oldValue !== newValue) {
+            var taskRef = getTaskRef(getFirestore, getState, taskId);
+
+            taskRef.update({ 
+                note: newValue,
+                metadata: getUpdatedMetadata(currentMetadata, { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
+             }).then(() => {
+                // Careful what you do here, Promises don't resolve Offline.
+            }).catch(error => {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            })
+
+            // Project updated metadata.
+            updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
         }
     }
 }

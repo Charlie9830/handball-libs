@@ -135,4 +135,13 @@ export function isChecklistDueForRenew(checklistSettings) {
   return nextRenewDate.diff(currentDate, 'seconds') < 0;
 }
 
+export function getDisplayNameFromLookup(lookup, userId) {
+  if (lookup[userId] !== undefined) {
+    return lookup[userId];
+  }
+
+  else {
+    return ""
+  }
+}
 

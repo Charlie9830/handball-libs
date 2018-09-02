@@ -23,7 +23,6 @@ export function appReducer(state, action) {
                     taskListWidgetId: action.taskListWidgetId,
                     taskId: action.taskId,
                     isInputOpen: false,
-                    isMetadataOpen: action.openMetadata
                 },
                 focusedTaskListId: action.taskListWidgetId,
                 isATaskMoving: false,
@@ -41,7 +40,6 @@ export function appReducer(state, action) {
                     taskListWidgetId: action.taskListWidgetId,
                     taskId: action.taskId,
                     isInputOpen: true,
-                    isMetadataOpen: false
                 },
                 openTaskOptionsId: -1,
                 isATaskMoving: false,
@@ -64,16 +62,8 @@ export function appReducer(state, action) {
                     taskListWidgetId: action.taskListWidgetId,
                     taskId: action.taskId,
                     isInputOpen: false,
-                    isMetadataOpen: false
                 }
             }
-        
-        case ActionTypes.CLOSE_METADATA: {
-            return {
-                ...state,
-                selectedTask: {...state.selectedTask, isMetadataOpen: false },
-            }
-        }
 
         case ActionTypes.SET_IS_SIDEBAR_OPEN:
             return {
@@ -89,7 +79,6 @@ export function appReducer(state, action) {
                     taskListWidgetId: action.sourceTaskListWidgetId,
                     taskId: action.taskId,
                     isInputOpen: false,
-                    isMetadataOpen: false
                 },
                 focusedTaskListId: action.sourceTaskListWidgetId,
                 movingTaskId: action.movingTaskId,
@@ -115,8 +104,20 @@ export function appReducer(state, action) {
                     taskListWidgetId: action.destinationTaskListWidgetId,
                     taskId: action.movedTaskId,
                     isInputOpen: false,
-                    isMetadataOpen: false
                 }
+            }
+        
+        case ActionTypes.OPEN_TASK_INFO: 
+            return {
+                ...state,
+                openTaskInfoId: action.value,
+            }
+        
+        case ActionTypes.CLOSE_TASK_INFO:
+            return {
+                ...state,
+                openTaskInfoId: -1,
+                taskComments: [],
             }
 
         case ActionTypes.CANCEL_TASK_MOVE: 
@@ -255,7 +256,6 @@ export function appReducer(state, action) {
                     taskListWidgetId: action.taskListWidgetId,
                     taskId: action.taskId,
                     isInputOpen: false,
-                    isMetadataOpen: false,
                 },
                 openTaskOptionsId: -1,
                 openCalendarId: action.taskId
@@ -347,7 +347,6 @@ export function appReducer(state, action) {
                     taskListWidgetId: -1,
                     taskId: -1,
                     isInputOpen: false,
-                    isMetadataOpen: false
                 },
                 openTaskOptionsId: -1,
                 openTaskListWidgetHeaderId: -1,
@@ -649,7 +648,7 @@ export function appReducer(state, action) {
                 ...state,
                 showOnlySelfTasks: action.value,
                 openTaskOptionsId: -1,
-                selectedTask: {taskListWidgetId: -1, taskId: -1, isInputOpen: false, isMetadataOpen: false},
+                selectedTask: {taskListWidgetId: -1, taskId: -1, isInputOpen: false},
 
             }
         }
@@ -674,6 +673,26 @@ export function appReducer(state, action) {
                 isUpdateSnackbarOpen: action.value,
             }
         }
+
+        case ActionTypes.START_TASK_COMMENTS_GET:
+            return {
+                ...state,
+                taskComments: [],
+                isGettingTaskComments: true,
+            }
+
+        case ActionTypes.RECEIVE_TASK_COMMENTS:
+            return {
+                ...state,
+                isGettingTaskComments: false,
+                taskComments: action.value,
+            }
+
+        case ActionTypes.SET_PENDING_TASK_COMMENT_IDS:
+            return {
+                ...state,
+                pendingTaskCommentIds: action.value,
+            }
 
         default:
             console.log("App Reducer is missing a Case for action:  " + action.type);
