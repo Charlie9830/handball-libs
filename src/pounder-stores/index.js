@@ -151,6 +151,7 @@ export function TaskCommentFactory(uid, text, mentions, created, createdBy, seen
         created: created,
         createdBy: createdBy,
         seenBy: seenBy,
+        timestamp: new Date(),
     }
 }
 

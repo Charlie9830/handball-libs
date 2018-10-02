@@ -2,7 +2,7 @@ import * as ActionTypes from '../action-types/index';
 import FirestoreBatchPaginator from '../../firestore-batch-paginator';
 import { USERS, PROJECTS, PROJECTLAYOUTS, TASKS, TASKLISTS, ACCOUNT, ACCOUNT_DOC_ID,
      REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY, TASKCOMMENTS } from '../../pounder-firebase/paths';
-import { setUserUid, getUserUid } from '../../pounder-firebase';
+import { setUserUid, getUserUid, TaskCommentQueryLimit } from '../../pounder-firebase';
 import { ProjectStore, ProjectLayoutStore, TaskListStore, TaskListSettingsStore, TaskStore, CssConfigStore, MemberStore,
 InviteStore, RemoteStore, TaskMetadataStore, DirectoryStore, ProjectFactory, ChecklistSettingsFactory, TaskCommentFactory} from '../../pounder-stores';
 import Moment from 'moment';
@@ -602,6 +602,20 @@ export function setPendingTaskCommentIds(ids) {
     }
 }
 
+export function setIsTaskCommentsPaginating(isPaginating) {
+    return {
+        type: ActionTypes.SET_IS_TASK_COMMENTS_PAGINATING,
+        value: isPaginating,
+    }
+}
+
+export function setIsAllTaskCommentsFetched(isFetched) {
+    return {
+        type: ActionTypes.SET_IS_ALL_TASK_COMMENTS_FETCHED,
+        value: isFetched,
+    }
+}
+
 // Private Actions.
 // Should only be dispatched by moveTaskAsync(), as moveTaskAsync() gets the movingTaskId from the State. Calling this from elsewhere
 // could create a race Condition.
@@ -627,6 +641,7 @@ export function closeTaskInfoAsync() {
         var taskComments = [...getState().taskComments ];
 
         dispatch(closeTaskInfo());
+        dispatch(setIsAllTaskCommentsFetched(false));
 
         // Add User ID to Seenby of any Unseen Task Comments.
         var selectedProjectId = getState().selectedProjectId;
@@ -649,12 +664,37 @@ export function closeTaskInfoAsync() {
                 }
             })
 
-            console.log(batch);
-
             batch.commit().then( () => {
                 // Success
             }).catch(error => {
                 handleFirebaseUpdateError(error, getState(), dispatch);
+            })
+
+            // Update Task.unseenTaskCommentMembers.
+            var taskRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS)
+            .doc(openTaskInfoId);
+            
+            taskRef.get().then( doc => {
+                if (doc.exists) {
+                    // Filter out current User from unseenCommentMembers.
+                    var currentUnseenCommentMembers = doc.data().unseenTaskCommentMembers;
+                    var newUnseenCommentMembers = {};
+                    for (var propertyName in currentUnseenCommentMembers) {
+                        if (propertyName !== getUserUid()) {
+                            newUnseenCommentMembers[propertyName] = "0";
+                        } 
+                    }
+
+                    taskRef.update({
+                        unseenTaskCommentMembers: newUnseenCommentMembers,
+                    }).then( () => {
+
+                    }).catch( error => {
+                        handleFirebaseUpdateError(error, getState(), dispatch);
+                    })
+                }
+            }).catch( error => {
+                handleFirebaseSnapshotError(error, getState(), dispatch);
             })
         }
     }
@@ -666,19 +706,80 @@ export function getTaskCommentsAsync(taskId) {
         if (isProjectRemote(getState, selectedProjectId) === true) {
             dispatch(startTaskCommentsGet());
 
-            getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId).collection(TASKCOMMENTS).get().then( snapshot => {
-                var taskComments = [];
-                snapshot.forEach(doc => {
-                    taskComments.push(doc.data());
-                })
+            var ref = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId).collection(TASKCOMMENTS)
+            .orderBy("timestamp", "desc").limit(TaskCommentQueryLimit + 1);
 
-                dispatch(receiveTaskComments(taskComments));
-
+            ref.get().then( snapshot => {
+                handleTaskCommentsSnapshot("initial", snapshot, dispatch);
             }).catch(error => {
-                handleFirebaseSnapshotError(error, getState(), dispatch );
+                handleFirebaseSnapshotError(error, getState(), dispatch, getState );
             })
         }
     }
+}
+
+export function paginateTaskCommentsAsync(taskId) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        if (getState().taskComments.length > 0) {
+            var selectedProjectId = getState().selectedProjectId;
+            var previousQueryLastDoc = getState().taskComments[getState().taskComments.length - 1].doc;
+
+            if (previousQueryLastDoc !== undefined) {
+                dispatch(setIsTaskCommentsPaginating(true));
+
+                var ref = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId).collection(TASKCOMMENTS)
+                    .orderBy("timestamp", "desc").startAfter(previousQueryLastDoc).limit(TaskCommentQueryLimit + 1);
+
+                ref.get().then(snapshot => {
+                    handleTaskCommentsSnapshot("pagination", snapshot, dispatch, getState);
+                    dispatch(setIsTaskCommentsPaginating(false));
+
+                }).catch(error => {
+                    handleFirebaseSnapshotError(error, getState(), dispatch, getState);
+                })
+            }
+        }
+
+    }
+}
+
+function handleTaskCommentsSnapshot(type, snapshot, dispatch, getState) {
+
+        // Determine based on the Snapshot Size if the Query has retreived all of the Task Comments.
+        // Problem is however that if the Query Size matches the TaskCommentsQueryLimit, there are edge cases where
+        // there could be no more Commments. As in the total size of the Comments collection is evenly divisable by the
+        // TaskCOmmentsQueryLimit.. You could try actually fetching the TaskCommentsQueryLimit + 1 and using the extra one
+        // to determine if the Query is finished whilst still only showing the TaskCommentsQueryLimit to the user.
+
+        var taskComments = [];
+        var counter = 0;
+        snapshot.forEach(doc => {
+            // Take only enough Comments to equalt TaskCommentQueryLimit. comment[TaskCommentQueryLimit + 1] is only used to
+            // determine if Pagination is completed.
+            if (counter < TaskCommentQueryLimit) {
+                var comment = { doc: doc, ...doc.data() }
+                taskComments.push(comment);
+                counter++;
+            }            
+        })
+
+        if (snapshot.size < TaskCommentQueryLimit + 1) {
+            dispatch(setIsAllTaskCommentsFetched(true));
+        } 
+
+        if (type === "initial") {
+            // Send to state as is.
+            dispatch(receiveTaskComments(taskComments));
+        }
+
+        if (type === "pagination") {
+            // Concat with existing Task Comments.
+            var mergedTaskComments = [...getState().taskComments, ...taskComments ];
+
+            dispatch(receiveTaskComments(mergedTaskComments));
+        }
+        
+        
 }
 
 export function postNewCommentAsync(taskId, value, projectMembers, currentMetadata) {
@@ -704,6 +805,25 @@ export function postNewCommentAsync(taskId, value, projectMembers, currentMetada
             var existingComments = [...getState().taskComments];
             existingComments.push(taskComment);
             dispatch(receiveTaskComments(existingComments));
+
+            // Add a Hashtable to Task to indicate the User ID's that have unseen Comments.
+            var unseenMembersArray = getState().members.filter(item => {
+                return item.project === selectedProjectId && item.userId !== createdBy;
+            })
+
+            var unseenMembers = {};
+            unseenMembersArray.forEach(item => {
+                unseenMembers[item.userId] = "0";
+            })
+            
+            var taskRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId);
+            taskRef.update({
+                unseenTaskCommentMembers: unseenMembers,
+            }).then( () => {
+                // Success
+            }).catch( error => {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            })
         }
     }
 }

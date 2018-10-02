@@ -104,6 +104,8 @@ var initialState = {
     isGettingTaskComments: false,
     taskComments: [],
     pendingTaskCommentIds: [],
+    isTaskCommentsPaginating: false,
+    isAllTaskCommentsFetched: false,
 }
 
 export var appStore = createStore(

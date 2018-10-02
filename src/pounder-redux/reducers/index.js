@@ -694,6 +694,18 @@ export function appReducer(state, action) {
                 pendingTaskCommentIds: action.value,
             }
 
+        case ActionTypes.SET_IS_TASK_COMMENTS_PAGINATING:
+            return {
+                ...state,
+                isTaskCommentsPaginating: action.value,
+            }
+
+        case ActionTypes.SET_IS_ALL_TASK_COMMENTS_FETCHED:
+            return {
+                ...state,
+                isAllTaskCommentsFetched: action.value,
+            }
+
         default:
             console.log("App Reducer is missing a Case for action:  " + action.type);
             return state;
