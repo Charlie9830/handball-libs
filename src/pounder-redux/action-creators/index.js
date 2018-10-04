@@ -743,6 +743,28 @@ export function paginateTaskCommentsAsync(taskId) {
     }
 }
 
+export function deleteTaskCommentAsync(taskId, commentId) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        var selectedProjectId = getState().selectedProjectId;
+
+        var ref = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId).
+            collection(TASKCOMMENTS).doc(commentId);
+
+        ref.delete().then(() => {
+            // Success
+        }).catch(error => {
+            handleFirebaseUpdateError(error, getState(), dispatch);
+        })
+
+        // Update State.
+        var newTaskComments = getState().taskComments.filter( item => {
+            return item.uid !== commentId;
+        })
+
+        dispatch(receiveTaskComments(newTaskComments));
+    }
+}
+
 function handleTaskCommentsSnapshot(type, snapshot, dispatch, getState) {
 
         // Determine based on the Snapshot Size if the Query has retreived all of the Task Comments.
@@ -757,7 +779,7 @@ function handleTaskCommentsSnapshot(type, snapshot, dispatch, getState) {
             // Take only enough Comments to equalt TaskCommentQueryLimit. comment[TaskCommentQueryLimit + 1] is only used to
             // determine if Pagination is completed.
             if (counter < TaskCommentQueryLimit) {
-                var comment = { doc: doc, ...doc.data() }
+                var comment = { doc: doc, isSynced: !doc.metadata.hasPendingWrites, ...doc.data() }
                 taskComments.push(comment);
                 counter++;
             }            
@@ -796,14 +818,25 @@ export function postNewCommentAsync(taskId, value, projectMembers, currentMetada
             var taskComment = TaskCommentFactory(newCommentRef.id, value, mentions, created, createdBy, seenBy);
 
             newCommentRef.set(taskComment).then( () => {
-                // Success
+                // Success. Update newly posted comment's isSynced flag.
+                var commentIndex = getState().taskComments.findIndex(item => {
+                    return item.uid === newCommentRef.id;
+                })
+
+                if (commentIndex !== -1) {
+                    var comments = [...getState().taskComments];
+                    comments[commentIndex].isSynced = true;
+
+                    dispatch(receiveTaskComments(comments));
+                }
+
             }).catch( error => {
                 handleFirebaseUpdateError(error, getState(), dispatch);
             })
 
             // Add to State.
             var existingComments = [...getState().taskComments];
-            existingComments.push(taskComment);
+            existingComments.push({ isSynced: false ,...taskComment});
             dispatch(receiveTaskComments(existingComments));
 
             // Add a Hashtable to Task to indicate the User ID's that have unseen Comments.
