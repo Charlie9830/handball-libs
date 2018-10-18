@@ -28,6 +28,7 @@ export function setupBackend(mode, platform) {
 var initialState = {
     projects: [],
     members: [],
+    memberLookup: {},
     invites: [],
     localProjects: [],
     remoteProjects: [],
@@ -106,6 +107,8 @@ var initialState = {
     pendingTaskCommentIds: [],
     isTaskCommentsPaginating: false,
     isAllTaskCommentsFetched: false,
+    openTaskInspectorId: -1,
+    
 }
 
 export var appStore = createStore(

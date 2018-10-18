@@ -5,6 +5,16 @@ const LONG_DAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 
 const SHORT_DAY_NAMES = ['mon', 'tues', 'tue', 'wed', 'thurs', 'thur', 'fri', 'sat', 'sun'];
 const DAY_NAMES = LONG_DAY_NAMES.concat(SHORT_DAY_NAMES);
 
+export function GetDisplayNameFromLookup(userId, memberLookup) {
+  if (userId === undefined || userId === -1 || userId === "-1") {
+      return "";
+  }
+
+  var displayName = memberLookup[userId];
+  return displayName === undefined ? "" : displayName;
+}
+
+
 export function ParseDueDate(isComplete, dueDate) {
   if (isComplete) {
     return {

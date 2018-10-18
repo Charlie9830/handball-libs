@@ -172,6 +172,7 @@ export function appReducer(state, action) {
             return {
                 ...state,
                 members: action.members,
+                memberLookup: buildProjectMembersLookup(action.members),
             }
 
         case ActionTypes.RECEIVE_INVITES: 
@@ -705,6 +706,12 @@ export function appReducer(state, action) {
                 ...state,
                 isAllTaskCommentsFetched: action.value,
             }
+        
+        case ActionTypes.SET_OPEN_TASK_INSPECTOR_ID:
+            return {
+                ...state,
+                openTaskInspectorId: action.value,
+            }
 
         default:
             console.log("App Reducer is missing a Case for action:  " + action.type);
@@ -750,6 +757,15 @@ function getProjectSorter(sortBy) {
     }
 }
 
+function buildProjectMembersLookup(members) {
+    var lookup = {};
+    members.forEach(member => {
+        lookup[member.userId] = member.displayName;
+    })
+
+    return lookup;
+}
+
 
 function projectAlphabeticalSorter(a,b) {
     var textA = a.projectName.toUpperCase();
@@ -785,7 +801,6 @@ function isFirstTimeBoot(generalConfig) {
         return false;
     }
 }
-
 
 function processSelectedTask(selectedTask, focusingTaskListId) {
     if (selectedTask.taskListWidgetId !== focusingTaskListId) {

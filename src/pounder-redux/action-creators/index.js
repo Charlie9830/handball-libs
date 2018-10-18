@@ -11,7 +11,7 @@ import parseArgs from 'minimist';
 import stringArgv from 'string-argv';
 import Fuse from 'fuse.js';
 import { getDayPickerDate, getClearedDate, getDaysForwardDate, getWeeksForwardDate, getParsedDate, getNormalizedDate,
-isChecklistDueForRenew, isDayName, getDayNameDate } from '../../pounder-utilities';
+isChecklistDueForRenew, isDayName, getDayNameDate} from '../../pounder-utilities';
 var loremIpsum = require('lorem-ipsum');
 
 const legalArgsRegEx = / -dd | -hp /i;
@@ -619,9 +619,10 @@ export function setIsAllTaskCommentsFetched(isFetched) {
 // Private Actions.
 // Should only be dispatched by moveTaskAsync(), as moveTaskAsync() gets the movingTaskId from the State. Calling this from elsewhere
 // could create a race Condition.
-function closeTaskInfo() {
+function setOpenTaskInspectorId(taskId) {
     return {
-        type: ActionTypes.CLOSE_TASK_INFO,
+        type: ActionTypes.SET_OPEN_TASK_INSPECTOR_ID,
+        value: taskId,
     }
 }
 
@@ -634,19 +635,27 @@ function endTaskMove(movingTaskId, destinationTaskListWidgetId) {
 }
 
 // Thunks
-export function closeTaskInfoAsync() {
+export function openTaskInspectorAsync(taskId) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        dispatch(setOpenTaskInspectorId(taskId));
+        dispatch(getTaskCommentsAsync(taskId));
+    }
+}
+
+export function closeTaskInspectorAsync() {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         // Save some Info before it is destroyed by the closeTaskInfo() Action.
-        var openTaskInfoId = getState().openTaskInfoId;
-        var taskComments = [...getState().taskComments ];
+        var openTaskInspectorId = getState().openTaskInspectorId;
+        var taskComments = [...getState().taskComments];
 
-        dispatch(closeTaskInfo());
+        dispatch(setOpenTaskInspectorId(-1));
         dispatch(setIsAllTaskCommentsFetched(false));
 
         // Add User ID to Seenby of any Unseen Task Comments.
         var selectedProjectId = getState().selectedProjectId;
         if (isProjectRemote(getState, selectedProjectId) === true) {
             var batch = getFirestore().batch();
+            var unseenCommentsFound = false;
 
             taskComments.forEach(comment => {
                 var isUnseen = !comment.seenBy.some(id => {
@@ -654,8 +663,10 @@ export function closeTaskInfoAsync() {
                 })
 
                 if (isUnseen === true) {
+                    unseenCommentsFound = true;
+
                     var ref = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS)
-                        .doc(openTaskInfoId).collection(TASKCOMMENTS).doc(comment.uid);
+                        .doc(openTaskInspectorId).collection(TASKCOMMENTS).doc(comment.uid);
 
                     var newSeenBy = comment.seenBy;
                     newSeenBy.push(getUserUid());
@@ -664,38 +675,40 @@ export function closeTaskInfoAsync() {
                 }
             })
 
-            batch.commit().then( () => {
+            batch.commit().then(() => {
                 // Success
             }).catch(error => {
                 handleFirebaseUpdateError(error, getState(), dispatch);
             })
 
-            // Update Task.unseenTaskCommentMembers.
-            var taskRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS)
-            .doc(openTaskInfoId);
-            
-            taskRef.get().then( doc => {
-                if (doc.exists) {
-                    // Filter out current User from unseenCommentMembers.
-                    var currentUnseenCommentMembers = doc.data().unseenTaskCommentMembers;
-                    var newUnseenCommentMembers = {};
-                    for (var propertyName in currentUnseenCommentMembers) {
-                        if (propertyName !== getUserUid()) {
-                            newUnseenCommentMembers[propertyName] = "0";
-                        } 
+            // Update Task.unseenTaskCommentMembers if unseen Comments have been found.
+            if (unseenCommentsFound === true) {
+                var taskRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS)
+                    .doc(openTaskInspectorId);
+
+                taskRef.get().then(doc => {
+                    if (doc.exists) {
+                        // Filter out current User from unseenCommentMembers.
+                        var currentUnseenCommentMembers = doc.data().unseenTaskCommentMembers;
+                        var newUnseenCommentMembers = {};
+                        for (var propertyName in currentUnseenCommentMembers) {
+                            if (propertyName !== getUserUid()) {
+                                newUnseenCommentMembers[propertyName] = "0";
+                            }
+                        }
+
+                        taskRef.update({
+                            unseenTaskCommentMembers: newUnseenCommentMembers,
+                        }).then(() => {
+
+                        }).catch(error => {
+                            handleFirebaseUpdateError(error, getState(), dispatch);
+                        })
                     }
-
-                    taskRef.update({
-                        unseenTaskCommentMembers: newUnseenCommentMembers,
-                    }).then( () => {
-
-                    }).catch( error => {
-                        handleFirebaseUpdateError(error, getState(), dispatch);
-                    })
-                }
-            }).catch( error => {
-                handleFirebaseSnapshotError(error, getState(), dispatch);
-            })
+                }).catch(error => {
+                    handleFirebaseSnapshotError(error, getState(), dispatch);
+                })
+            }
         }
     }
 }
@@ -779,7 +792,12 @@ function handleTaskCommentsSnapshot(type, snapshot, dispatch, getState) {
             // Take only enough Comments to equalt TaskCommentQueryLimit. comment[TaskCommentQueryLimit + 1] is only used to
             // determine if Pagination is completed.
             if (counter < TaskCommentQueryLimit) {
-                var comment = { doc: doc, isSynced: !doc.metadata.hasPendingWrites, ...doc.data() }
+                var comment = {
+                    doc: doc,
+                    isSynced: !doc.metadata.hasPendingWrites,
+                    ...doc.data(),
+                }
+
                 taskComments.push(comment);
                 counter++;
             }            
@@ -958,7 +976,7 @@ function unsubscribeCompletedTasks() {
     }
 }
 
-export function updateTaskNoteAsync(newValue, oldValue, taskId, currentMetadata) {
+export function updateTaskNoteAsync(newValue, oldValue, taskId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
 
         if (oldValue !== newValue) {
@@ -966,7 +984,7 @@ export function updateTaskNoteAsync(newValue, oldValue, taskId, currentMetadata)
 
             taskRef.update({ 
                 note: newValue,
-                metadata: getUpdatedMetadata(currentMetadata, { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
+                metadata: getUpdatedMetadata(extractCurrentMetadata(getState(), taskId), { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
              }).then(() => {
                 // Careful what you do here, Promises don't resolve Offline.
             }).catch(error => {
@@ -1947,7 +1965,7 @@ export function getDatabaseInfoAsync() {
     }
 }
 
-export function updateTaskPriority(taskId, newValue, oldValue, currentMetadata) {
+export function updateTaskPriorityAsync(taskId, newValue, oldValue) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(closeCalendar());
 
@@ -1958,7 +1976,7 @@ export function updateTaskPriority(taskId, newValue, oldValue, currentMetadata) 
             // Update Firestore.
             taskRef.update({
                 isHighPriority: newValue,
-                metadata: getUpdatedMetadata(currentMetadata, { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
+                metadata: getUpdatedMetadata(extractCurrentMetadata(getState(), taskId), { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
             }).then(() => {
                 // Careful what you do here, promises don't resolve if you are offline.
             }).catch(error => {
@@ -1971,7 +1989,7 @@ export function updateTaskPriority(taskId, newValue, oldValue, currentMetadata) 
     }
 }
 
-export function updateTaskDueDateAsync(taskId, newDate, oldDate, currentMetadata) {
+export function updateTaskDueDateAsync(taskId, newDate, oldDate) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(closeCalendar());
 
@@ -1981,7 +1999,7 @@ export function updateTaskDueDateAsync(taskId, newDate, oldDate, currentMetadata
             taskRef.update({
                 dueDate: newDate,
                 isNewTask: false,
-                metadata: getUpdatedMetadata(currentMetadata, { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
+                metadata: getUpdatedMetadata(extractCurrentMetadata(getState(), taskId), { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
             }).then(() => {
                 // Carefull what you do here, promises don't resolve if you are offline.
             }).catch(error => {
@@ -3193,6 +3211,15 @@ function handleAuthError(dispatch, error) {
     }
 }
 
+function extractCurrentMetadata(state, taskId) {
+    var tasks = state.tasks;
+    
+    var targetTask = tasks.find(item => {
+        return item.uid === taskId;
+    })
+
+    return targetTask === undefined ? undefined : targetTask.metadata;
+}
 
 function parseArgumentsIntoUpdate(getState, update) {
     // Search for Arguments in taskName.
