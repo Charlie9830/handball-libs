@@ -822,7 +822,7 @@ function handleTaskCommentsSnapshot(type, snapshot, dispatch, getState) {
         
 }
 
-export function postNewCommentAsync(taskId, value, projectMembers, currentMetadata) {
+export function postNewCommentAsync(taskId, value) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         var selectedProjectId = getState().selectedProjectId;
 
@@ -3260,6 +3260,11 @@ function parseArgumentsIntoUpdate(getState, update) {
 
     if (argv.i !== undefined) {
         parsedUpdate.isHighPriority = true;
+    }
+
+    // Note.
+    if (argv.n !== undefined) {
+        parsedUpdate.note = argv.n;
     }
 
     // Assign Task to.
