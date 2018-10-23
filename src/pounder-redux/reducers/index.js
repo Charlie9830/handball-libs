@@ -1,7 +1,7 @@
 import * as ActionTypes from '../action-types/index'
 import { ParseDueDate } from '../../pounder-utilities';
 import { ProjectLayoutStore } from '../../pounder-stores';
-import { AccountConfigFallback } from '../../pounder-firebase';
+import { AccountConfigFallback, getUserUid } from '../../pounder-firebase';
 
 export function appReducer(state, action) {
     switch (action.type) {
@@ -15,8 +15,6 @@ export function appReducer(state, action) {
             };
         
         case ActionTypes.SELECT_TASK:
-            const openCalendarId = state.openCalendarId === action.taskId ? action.taskId : -1; // Keep calender open if Open already.
-
             return {
                 ...state,
                 selectedTask: {
@@ -28,7 +26,6 @@ export function appReducer(state, action) {
                 isATaskMoving: false,
                 movingTaskId: -1,
                 sourceTaskListId: -1,
-                openCalendarId: openCalendarId,
                 openTaskListSettingsMenuId: -1,
                 isTaskListJumpMenuOpen: false,
             };
@@ -45,7 +42,6 @@ export function appReducer(state, action) {
                 isATaskMoving: false,
                 movingTaskId: -1,
                 sourceTaskListId: -1,
-                openCalendarId: -1,
                 openTaskListSettingsMenuId: -1
             }
 
@@ -83,7 +79,6 @@ export function appReducer(state, action) {
                 focusedTaskListId: action.sourceTaskListWidgetId,
                 movingTaskId: action.movingTaskId,
                 sourceTaskListId: action.sourceTaskListWidgetId,
-                openCalendarId: -1,
                 openTaskListSettingsMenuId: -1,
             }
 
@@ -194,7 +189,7 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 tasks: newTasks,
                 incompletedLocalTasks: action.value,
-                projectSelectorDueDateDisplays: getProjectSelectorDueDateDisplaysHelper(newTasks),
+                projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks),
             }
 
         case ActionTypes.RECEIVE_COMPLETED_LOCAL_TASKS:
@@ -213,7 +208,7 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 tasks: newTasks,
                 incompletedRemoteTasks: action.value,
-                projectSelectorDueDateDisplays: getProjectSelectorDueDateDisplaysHelper(newTasks)
+                projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks)
             }
         
         case ActionTypes.RECEIVE_COMPLETED_REMOTE_TASKS:
@@ -248,18 +243,6 @@ export function appReducer(state, action) {
                 ...state,
                 openTaskListSettingsMenuId: action.id,
                 isTaskListJumpMenuOpen: false,
-            }
-        
-        case ActionTypes.OPEN_CALENDAR: 
-            return {
-                ...state,
-                selectedTask: {
-                    taskListWidgetId: action.taskListWidgetId,
-                    taskId: action.taskId,
-                    isInputOpen: false,
-                },
-                openTaskOptionsId: -1,
-                openCalendarId: action.taskId
             }
 
         case ActionTypes.UNLOCK_APP: 
@@ -343,7 +326,6 @@ export function appReducer(state, action) {
                 ...state,
                 selectedProjectId: action.projectId,
                 isSelectedProjectRemote: action.projectId === -1 ? false : isProjectRemote(state, action.projectId),
-                openCalendarId: -1,
                 selectedTask: {
                     taskListWidgetId: -1,
                     taskId: -1,
@@ -359,12 +341,6 @@ export function appReducer(state, action) {
                 openTaskListSettingsMenuId: -1,
                 isTaskListJumpMenuOpen: false,
                 showOnlySelfTasks: false,
-            }
-        
-        case ActionTypes.CLOSE_CALENDAR:
-            return {
-                ...state,
-                openCalendarId: -1
             }
         
         case ActionTypes.SET_PROJECTS_HAVE_PENDING_WRITES: 
@@ -661,10 +637,10 @@ export function appReducer(state, action) {
             }
         }
 
-        case ActionTypes.CALCULATE_PROJECT_SELECTOR_DUE_DATE_DISPLAYS: {
+        case ActionTypes.CALCULATE_PROJECT_SELECTOR_INDICATORS: {
             return {
                 ...state,
-                projectSelectorDueDateDisplays: getProjectSelectorDueDateDisplaysHelper(state.tasks),
+                projectSelectorIndicators: getProjectSelectorIndicatorsHelper(state.tasks),
             }
         }
         
@@ -817,14 +793,17 @@ function isProjectRemote(state, projectId) {
     return index !== -1;
 }
 
-var getProjectSelectorDueDateDisplaysHelper = function(tasks) {
+function getProjectSelectorIndicatorsHelper(tasks) {
     var returnList = {};
 
     tasks.forEach(item => {
-        if (item.dueDate !== "" && item.isComplete !== true) {
+        var hasUnseenComments = item.unseenTaskCommentMembers !== undefined &&
+            item.unseenTaskCommentMembers[getUserUid()] !== undefined;
+
+        if ((item.dueDate !== "" && item.isComplete !== true) || hasUnseenComments) {
             // Create an entry in returnList if not already existing.
             if (returnList[item.project] == undefined) {
-                returnList[item.project] = { greens: 0, yellows: 0, yellowReds: 0, reds: 0 };
+                returnList[item.project] = { greens: 0, yellows: 0, yellowReds: 0, reds: 0, hasUnseenComments: true };
             }
 
             var { className } = ParseDueDate(item.isComplete, item.dueDate);
@@ -848,6 +827,8 @@ var getProjectSelectorDueDateDisplaysHelper = function(tasks) {
                 default:
                     break;
             }
+
+            returnList[item.project].hasUnseenComments = hasUnseenComments;
         }
     })
 

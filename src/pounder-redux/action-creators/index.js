@@ -398,14 +398,6 @@ export function setUpdatingInviteIds(updatingInviteIds) {
     }
 }
 
-export function openCalendar(taskListWidgetId, taskId) {
-    return {
-        type: ActionTypes.OPEN_CALENDAR,
-        taskListWidgetId: taskListWidgetId,
-        taskId: taskId
-    }
-}
-
 export function startTasklistAdd() {
     return {
         type: ActionTypes.START_TASKLIST_ADD
@@ -455,14 +447,6 @@ export function receiveRemoteProjectLayouts(projectLayouts) {
     return {
         type: ActionTypes.RECEIVE_REMOTE_PROJECTLAYOUTS,
         value: projectLayouts
-    }
-}
-
-
-
-export function closeCalendar() {
-    return {
-        type: ActionTypes.CLOSE_CALENDAR
     }
 }
 
@@ -569,9 +553,9 @@ export function setIsProjectMenuOpen(isOpen) {
     }
 }
 
-export function calculateProjectSelectorDueDateDisplays() {
+export function calculateProjectSelectorIndicators() {
     return {
-        type: ActionTypes.CALCULATE_PROJECT_SELECTOR_DUE_DATE_DISPLAYS
+        type: ActionTypes.CALCULATE_PROJECT_SELECTOR_INDICATORS
     }
 }
 
@@ -716,10 +700,9 @@ export function closeTaskInspectorAsync() {
 export function getTaskCommentsAsync(taskId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         var selectedProjectId = getState().selectedProjectId;
-        if (isProjectRemote(getState, selectedProjectId) === true) {
             dispatch(startTaskCommentsGet());
 
-            var ref = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId).collection(TASKCOMMENTS)
+            var ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS)
             .orderBy("timestamp", "desc").limit(TaskCommentQueryLimit + 1);
 
             ref.get().then( snapshot => {
@@ -727,7 +710,6 @@ export function getTaskCommentsAsync(taskId) {
             }).catch(error => {
                 handleFirebaseSnapshotError(error, getState(), dispatch, getState );
             })
-        }
     }
 }
 
@@ -740,7 +722,7 @@ export function paginateTaskCommentsAsync(taskId) {
             if (previousQueryLastDoc !== undefined) {
                 dispatch(setIsTaskCommentsPaginating(true));
 
-                var ref = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId).collection(TASKCOMMENTS)
+                var ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS)
                     .orderBy("timestamp", "desc").startAfter(previousQueryLastDoc).limit(TaskCommentQueryLimit + 1);
 
                 ref.get().then(snapshot => {
@@ -760,8 +742,7 @@ export function deleteTaskCommentAsync(taskId, commentId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         var selectedProjectId = getState().selectedProjectId;
 
-        var ref = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId).
-            collection(TASKCOMMENTS).doc(commentId);
+        var ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS).doc(commentId);
 
         ref.delete().then(() => {
             // Success
@@ -826,56 +807,57 @@ export function postNewCommentAsync(taskId, value) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         var selectedProjectId = getState().selectedProjectId;
 
-        if (isProjectRemote(getState, selectedProjectId) === true) {
-            var mentions = [];
-            var created = Moment().toISOString();
-            var createdBy = getUserUid();
-            var seenBy = [createdBy];
-            var newCommentRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId).collection(TASKCOMMENTS).doc();
+        var mentions = [];
+        var created = Moment().toISOString();
+        var createdBy = getUserUid();
+        var displayName = getState().displayName;
+        var seenBy = [createdBy];
+        var newCommentRef = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS).doc();
 
-            var taskComment = TaskCommentFactory(newCommentRef.id, value, mentions, created, createdBy, seenBy);
+        var taskComment = TaskCommentFactory(newCommentRef.id, value, mentions, created, createdBy, seenBy, displayName);
 
-            newCommentRef.set(taskComment).then( () => {
-                // Success. Update newly posted comment's isSynced flag.
-                var commentIndex = getState().taskComments.findIndex(item => {
-                    return item.uid === newCommentRef.id;
-                })
-
-                if (commentIndex !== -1) {
-                    var comments = [...getState().taskComments];
-                    comments[commentIndex].isSynced = true;
-
-                    dispatch(receiveTaskComments(comments));
-                }
-
-            }).catch( error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
+        newCommentRef.set(taskComment).then(() => {
+            // Success. Update newly posted comment's isSynced flag.
+            var commentIndex = getState().taskComments.findIndex(item => {
+                return item.uid === newCommentRef.id;
             })
 
-            // Add to State.
-            var existingComments = [...getState().taskComments];
-            existingComments.push({ isSynced: false ,...taskComment});
-            dispatch(receiveTaskComments(existingComments));
+            if (commentIndex !== -1) {
+                var comments = [...getState().taskComments];
+                comments[commentIndex].isSynced = true;
 
-            // Add a Hashtable to Task to indicate the User ID's that have unseen Comments.
-            var unseenMembersArray = getState().members.filter(item => {
-                return item.project === selectedProjectId && item.userId !== createdBy;
-            })
+                dispatch(receiveTaskComments(comments));
+            }
 
-            var unseenMembers = {};
-            unseenMembersArray.forEach(item => {
-                unseenMembers[item.userId] = "0";
-            })
-            
-            var taskRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(taskId);
-            taskRef.update({
-                unseenTaskCommentMembers: unseenMembers,
-            }).then( () => {
-                // Success
-            }).catch( error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-        }
+        }).catch(error => {
+            handleFirebaseUpdateError(error, getState(), dispatch);
+        })
+
+        // Add to State.
+        var existingComments = [...getState().taskComments];
+        existingComments.push({ isSynced: false, ...taskComment });
+        dispatch(receiveTaskComments(existingComments));
+
+        // Add a Hashtable to Task to indicate the User ID's that have unseen Comments.
+        // Also add a flag to indicate this Task may have Comments. This helps the Migration Functions.
+        var unseenMembersArray = getState().members.filter(item => {
+            return item.project === selectedProjectId && item.userId !== createdBy;
+        })
+
+        var unseenMembers = {};
+        unseenMembersArray.forEach(item => {
+            unseenMembers[item.userId] = "0";
+        })
+
+        var taskRef = getTaskRef(getFirestore, getState, taskId);
+        taskRef.update({
+            unseenTaskCommentMembers: unseenMembers,
+            mightHaveTaskComments: true,
+        }).then(() => {
+            // Success
+        }).catch(error => {
+            handleFirebaseUpdateError(error, getState(), dispatch);
+        })
     }
 }
 
@@ -999,7 +981,7 @@ export function updateTaskNoteAsync(newValue, oldValue, taskId) {
 
 export function updateTaskAssignedToAsync(newUserId, oldUserId, taskId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(closeCalendar());
+        dispatch(setOpenTaskInspectorId(-1));
 
         if (newUserId !== oldUserId) {
             var taskRef = getTaskRef(getFirestore, getState, taskId);
@@ -1384,14 +1366,34 @@ function moveProjectToLocalLocationAsync(getState, getFirestore, projectId, curr
             })
         }));
 
-        // Tasks.
-        requests.push(remoteRef.collection(TASKS).where('project', '==', projectId).get().then(tasksSnapshot => {
-            tasksSnapshot.forEach(taskDoc => {
-                var ref = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc(taskDoc.id);
-                targetBatch.set(ref, taskDoc.data());
-                sourceBatch.delete(taskDoc.ref);
+        // Tasks
+        requests.push(new Promise((resolve, reject) => {
+            remoteRef.collection(TASKS).where('project', '==', projectId).get().then(tasksSnapshot => {
+                var taskCommentRequests = [];
+
+                tasksSnapshot.forEach(taskDoc => {
+                    var targetTaskRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc(taskDoc.id);
+                    targetBatch.set(targetTaskRef, taskDoc.data());
+                    sourceBatch.delete(taskDoc.ref);
+
+                    // Task may have Comments. Query for Comments and add to targetBatch.
+                    if (taskDoc.data().mightHaveTaskComments === true) {
+                        taskCommentRequests.push(taskDoc.ref.collection(TASKCOMMENTS).get().then(commentsSnapshot => {
+                            commentsSnapshot.forEach(commentDoc => {
+                                targetBatch.set(targetTaskRef.collection(TASKCOMMENTS).doc(commentDoc.id), commentDoc.data());
+                            })
+                        }))
+                    }
+                })
+
+                // Don't resolve until all Requests to get Comments have been completed.
+                Promise.all(taskCommentRequests).then(() => {
+                    resolve();
+                }).catch(error => {
+                    reject(error);
+                })
             })
-        }));
+        }))
 
         // Remote Id would have been taken care of by kickAllUsersFromProject Server function.
 
@@ -1566,7 +1568,6 @@ function moveProjectToRemoteLocationAsync(getFirestore, getState, projectId, cur
             currentProject.updated
         )
 
-
         var topLevelRef = getFirestore().collection(REMOTES).doc(projectId);
         targetBatch.set(topLevelRef, topLevelData);
         sourceBatch.delete(getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTS).doc(projectId));
@@ -1595,13 +1596,34 @@ function moveProjectToRemoteLocationAsync(getFirestore, getState, projectId, cur
         }));
 
         // Tasks.
-        requests.push(userRef.collection(TASKS).where('project', '==', projectId).get().then(tasksSnapshot => {
-            tasksSnapshot.forEach(taskDoc => {
-                var ref = getFirestore().collection(REMOTES).doc(projectId).collection(TASKS).doc(taskDoc.id);
-                targetBatch.set(ref, taskDoc.data());
-                sourceBatch.delete(taskDoc.ref);
+        // Query and Collect Tasks, if Task has Comments, Query and collect them as well.
+        requests.push(new Promise((resolve, reject) => {
+            userRef.collection(TASKS).where('project', '==', projectId).get().then(tasksSnapshot => {
+                var taskCommentRequests = [];
+
+                tasksSnapshot.forEach(taskDoc => {
+                    var targetTaskRef = getFirestore().collection(REMOTES).doc(projectId).collection(TASKS).doc(taskDoc.id);
+                    targetBatch.set(targetTaskRef, taskDoc.data());
+                    sourceBatch.delete(taskDoc.ref);
+
+                    // Task may have Comments. Query for Comments and add to targetBatch.
+                    if (taskDoc.data().mightHaveTaskComments === true) {
+                        taskCommentRequests.push(taskDoc.ref.collection(TASKCOMMENTS).get().then(commentsSnapshot => {
+                            commentsSnapshot.forEach(commentDoc => {
+                                targetBatch.set(targetTaskRef.collection(TASKCOMMENTS).doc(commentDoc.id), commentDoc.data());
+                            })
+                        }))
+                    }
+                })
+
+                // Don't resolve until all Requests to get Comments have been completed.
+                Promise.all(taskCommentRequests).then(() => {
+                    resolve();
+                }).catch(error => {
+                    reject(error);
+                })
             })
-        }));
+        }))
 
         // Place RemoteId.
         var remoteIdRef = getFirestore().collection(USERS).doc(getUserUid()).collection(REMOTE_IDS).doc(projectId);
@@ -1967,7 +1989,7 @@ export function getDatabaseInfoAsync() {
 
 export function updateTaskPriorityAsync(taskId, newValue, oldValue) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(closeCalendar());
+        dispatch(setOpenTaskInspectorId(-1));
 
         if (newValue !== oldValue) {
             // Determine Reference.
@@ -1991,7 +2013,7 @@ export function updateTaskPriorityAsync(taskId, newValue, oldValue) {
 
 export function updateTaskDueDateAsync(taskId, newDate, oldDate) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(closeCalendar());
+        dispatch(setOpenTaskInspectorId(-1));
 
         if (newDate !== oldDate) {
             // Update Firestore.

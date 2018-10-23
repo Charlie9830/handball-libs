@@ -143,7 +143,7 @@ export class TaskMetadataStore {
     }
 }
 
-export function TaskCommentFactory(uid, text, mentions, created, createdBy, seenBy) {
+export function TaskCommentFactory(uid, text, mentions, created, createdBy, seenBy, displayName) {
     return {
         uid: uid,
         text: text,
@@ -152,6 +152,7 @@ export function TaskCommentFactory(uid, text, mentions, created, createdBy, seen
         createdBy: createdBy,
         seenBy: seenBy,
         timestamp: new Date(),
+        displayName: displayName,
     }
 }
 
