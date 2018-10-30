@@ -11,7 +11,7 @@ import parseArgs from 'minimist';
 import stringArgv from 'string-argv';
 import Fuse from 'fuse.js';
 import { getDayPickerDate, getClearedDate, getDaysForwardDate, getWeeksForwardDate, getParsedDate, getNormalizedDate,
-isChecklistDueForRenew, isDayName, getDayNameDate} from '../../pounder-utilities';
+isChecklistDueForRenew, isDayName, getDayNameDate, getProjectLayoutType} from '../../pounder-utilities';
 var loremIpsum = require('lorem-ipsum');
 
 const legalArgsRegEx = / -dd | -hp /i;
@@ -600,6 +600,13 @@ export function setIsAllTaskCommentsFetched(isFetched) {
     }
 }
 
+export function setSelectedProjectLayoutType(layoutType) {
+    return {
+        type: ActionTypes.SET_SELECTED_PROJECT_LAYOUT_TYPE,
+        value: layoutType,
+    }
+}
+
 // Private Actions.
 // Should only be dispatched by moveTaskAsync(), as moveTaskAsync() gets the movingTaskId from the State. Calling this from elsewhere
 // could create a race Condition.
@@ -619,6 +626,37 @@ function endTaskMove(movingTaskId, destinationTaskListWidgetId) {
 }
 
 // Thunks
+export function updateProjectLayoutTypeAsync(projectLayoutType) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        var selectedProjectId = getState().selectedProjectId;
+
+        if (isProjectRemote(getState, selectedProjectId) === true) {
+            var batch = getFirestore().batch();
+
+            var memberRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(MEMBERS).doc(getUserUid());
+            batch.update(memberRef, { projectLayoutType: projectLayoutType } );
+
+            if (hasUserGotALocalLayout(getState()) === false) {
+                // If user has not already been in "Local" project layout mode. Create a new Layout entry for them.
+                var projectLayoutRef = getProjectLayoutRef(getFirestore, getState, selectedProjectId).doc(getUserUid());
+                var existingLayouts = getState().selectedProjectLayout.layouts;
+
+                batch.set(projectLayoutRef, {...new ProjectLayoutStore(existingLayouts, selectedProjectId, getUserUid() )});
+            }
+
+            batch.commit().then( () => {
+                // Success
+            }).catch(error => {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            })
+
+            // Update State.
+            dispatch(setSelectedProjectLayoutType(projectLayoutType));
+        }
+    }
+}
+
+
 export function openTaskInspectorAsync(taskId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setOpenTaskInspectorId(taskId));
@@ -2326,7 +2364,9 @@ export function updateProjectLayoutAsync(layouts, oldLayouts, projectId, taskLis
             // Update Firestore.
             var batch = getFirestore().batch();
 
-            var projectLayoutRef = getProjectLayoutRef(getFirestore, getState, projectId).doc(projectId);
+            var targetProjectLayoutId = getProjectLayoutType(projectId, getState().members, getUserUid()) === 'global' ? projectId : getUserUid();
+
+            var projectLayoutRef = getProjectLayoutRef(getFirestore, getState, projectId).doc(targetProjectLayoutId);
             batch.update(projectLayoutRef, { layouts: newTrimmedLayouts });
 
             // taskListIdsToFoul - Task Lists that don't yet have a corresponding Project Layout entity are considered
@@ -2923,8 +2963,6 @@ function handleProjectLayoutsSnapshot(getState, dispatch, isRemote, snapshot, re
         else {
             dispatch(receiveLocalProjectLayouts(projectLayouts));
         }
-
-        
     }
 }
 
@@ -3459,4 +3497,9 @@ function syncAppToConfig(generalConfig, dispatch) {
     }
 
     dispatch(setIsStartingUpFlag(false));
+}
+
+function hasUserGotALocalLayout(state) {
+    var selectedProjectId = state.selectedProjectId;
+    return state.projectLayoutsMap[selectedProjectId][getUserUid()] !== undefined;
 }

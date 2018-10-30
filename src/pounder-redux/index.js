@@ -44,7 +44,8 @@ var initialState = {
     focusedTaskListId: -1,
     openTaskListWidgetHeaderId: -1,
     openProjectSelectorId: -1,
-    projectLayouts: [],
+    selectedProjectLayout: {},
+    projectLayoutsMap: {},
     localProjectLayouts: [],
     remoteProjectLayouts: [],
     selectedTask: {taskListWidgetId: -1, taskId: -1, isInputOpen: false},
@@ -107,13 +108,13 @@ var initialState = {
     isTaskCommentsPaginating: false,
     isAllTaskCommentsFetched: false,
     openTaskInspectorId: -1,
-    
+    selectedProjectLayoutType: 'global',
 }
 
 export var appStore = createStore(
     appReducer,
     initialState,
-applyMiddleware(ReduxThunk.withExtraArgument( { getFirestore, getAuth, getDexie, getFunctions } ), /* Logger */ )
+applyMiddleware(ReduxThunk.withExtraArgument( { getFirestore, getAuth, getDexie, getFunctions } ), /* Logger */)
 );
 
 // Types.

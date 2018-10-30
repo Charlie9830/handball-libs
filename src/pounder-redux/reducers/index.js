@@ -1,5 +1,5 @@
 import * as ActionTypes from '../action-types/index'
-import { ParseDueDate } from '../../pounder-utilities';
+import { ParseDueDate, getProjectLayoutType } from '../../pounder-utilities';
 import { ProjectLayoutStore } from '../../pounder-stores';
 import { AccountConfigFallback, getUserUid } from '../../pounder-firebase';
 
@@ -163,11 +163,13 @@ export function appReducer(state, action) {
             }
         }
 
-        case ActionTypes.RECEIVE_MEMBERS: 
+        case ActionTypes.RECEIVE_MEMBERS:
             return {
                 ...state,
                 members: action.members,
                 memberLookup: buildProjectMembersLookup(action.members),
+                selectedProjectLayout: getSelectedProjectLayout(state.selectedProjectId, action.members, state.projectLayoutsMap),
+                selectedProjectLayoutType: getProjectLayoutType(state.selectedProjectId, action.members, getUserUid()),
             }
 
         case ActionTypes.RECEIVE_INVITES: 
@@ -293,26 +295,25 @@ export function appReducer(state, action) {
             }
 
         case ActionTypes.RECEIVE_LOCAL_PROJECTLAYOUTS:
+            var projectLayoutsMap = buildProjectLayoutsMap(action.value, state.remoteProjectLayouts);
+
             return {
                 ...state,
                 isAwaitingFirebase: false,
                 localProjectLayouts: action.value,
-                projectLayouts: [...action.value, ...state.remoteProjectLayouts]
+                projectLayoutsMap: projectLayoutsMap,
+                selectedProjectLayout: getSelectedProjectLayout(state.selectedProjectId, state.members, projectLayoutsMap),
             }
 
         case ActionTypes.RECEIVE_REMOTE_PROJECTLAYOUTS:
+            var projectLayoutsMap = buildProjectLayoutsMap(state.localProjectLayouts, action.value);
+
             return {
                 ...state,
                 isAwaitingFirebase: false,
                 remoteProjectLayouts: action.value,
-                projectLayouts: [...state.localProjectLayouts, ...action.value]
-            }
-
-        case ActionTypes.RECEIVE_REMOTE_PROJECT_LAYOUT:
-            return {
-                ...state,
-                isAwaitingFirebase: false,
-                remoteProjectLayout: action.projectLayout
+                projectLayoutsMap: projectLayoutsMap,
+                selectedProjectLayout: getSelectedProjectLayout(state.selectedProjectId, state.members, projectLayoutsMap),
             }
 
         case ActionTypes.SET_OPEN_PROJECT_SELECTOR_ID:
@@ -331,6 +332,8 @@ export function appReducer(state, action) {
                     taskId: -1,
                     isInputOpen: false,
                 },
+                selectedProjectLayout: getSelectedProjectLayout(action.projectId, state.members, state.projectLayoutsMap),
+                selectedProjectLayoutType: getProjectLayoutType(action.projectId, state.members, getUserUid()),
                 openTaskOptionsId: -1,
                 openTaskListWidgetHeaderId: -1,
                 openProjectSelectorId: action.projectId === state.openProjectSelectorId ? state.openProjectSelectorId : -1,
@@ -564,7 +567,7 @@ export function appReducer(state, action) {
                 completedLocalTasks: [],
                 incompletedRemoteTasks: [],
                 completedRemoteTasks: [],
-                projectLayouts: [],
+                projectLayoutsMap: {},
                 localProjectLayouts: [],
                 remoteProjectLayouts: [],
                 accountConfig: AccountConfigFallback
@@ -687,6 +690,13 @@ export function appReducer(state, action) {
             return {
                 ...state,
                 openTaskInspectorId: action.value,
+            }
+        
+        case ActionTypes.SET_SELECTED_PROJECT_LAYOUT_TYPE:
+            return {
+                ...state,
+                selectedProjectLayoutType: action.value,
+                selectedProjectLayout: getSelectedProjectLayout(state.selectedProjectId, state.members, state.projectLayoutsMap)
             }
 
         default:
@@ -833,4 +843,41 @@ function getProjectSelectorIndicatorsHelper(tasks) {
     })
 
     return returnList;
+  }
+
+function getSelectedProjectLayout(projectId, members, projectLayoutsMap) {
+    if (projectId === -1) {
+        return {};
+    }
+
+    if (getProjectLayoutType(projectId, members, getUserUid()) === 'global') {
+        // Return the Global Layout.
+        if (projectLayoutsMap[projectId] !== undefined &&
+            projectLayoutsMap[projectId][projectId] !== undefined) {
+            return projectLayoutsMap[projectId][projectId];
+        }
+    }
+
+    else {
+        // Return the Users local Layout.
+        return projectLayoutsMap[projectId][getUserUid()];
+    }
+}
+
+  function buildProjectLayoutsMap(localLayouts, remoteLayouts) {
+      var localLayoutsMap = {};
+      localLayouts.forEach(item => {
+          if (localLayoutsMap[item.project] === undefined) { localLayoutsMap[item.project] = {} };
+
+          localLayoutsMap[item.project][item.uid] = item;
+      })
+
+      var remoteLayoutsMap = {};
+      remoteLayouts.forEach(item => {
+          if (remoteLayoutsMap[item.project] === undefined) { remoteLayoutsMap[item.project] = {} };
+
+          remoteLayoutsMap[item.project][item.uid] = item;
+      })
+
+      return { ...localLayoutsMap, ...remoteLayoutsMap };
   }

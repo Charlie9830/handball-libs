@@ -155,3 +155,23 @@ export function getDisplayNameFromLookup(lookup, userId) {
   }
 }
 
+export function getProjectLayoutType(projectId, members, userId) {
+  var filteredMembers = members.filter(item => {
+      return item.project === projectId;
+  })
+
+  var member = filteredMembers.find(item => {
+      return item.userId === userId;
+  })
+
+  if (member === undefined || member.projectLayoutType === undefined) {
+      // Return the Global Layout.
+      return 'global';
+  }
+
+  else {
+      // Return the Users local Layout.
+      return member.projectLayoutType;
+  }
+}
+
