@@ -78,6 +78,16 @@ export function ChecklistSettingsFactory(isChecklist, initialStartDate, lastRene
     }
 }
 
+export function LayoutEntryFactory(taskListId) {
+    return {
+        i: taskListId,
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 4,
+    }
+}
+
 export class TaskListStore {
     constructor(taskListName, project, uid, taskListId, settings, isFresh) {
         this.taskListName = taskListName;

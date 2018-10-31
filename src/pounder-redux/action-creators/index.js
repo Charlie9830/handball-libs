@@ -4,7 +4,8 @@ import { USERS, PROJECTS, PROJECTLAYOUTS, TASKS, TASKLISTS, ACCOUNT, ACCOUNT_DOC
      REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY, TASKCOMMENTS } from '../../pounder-firebase/paths';
 import { setUserUid, getUserUid, TaskCommentQueryLimit } from '../../pounder-firebase';
 import { ProjectStore, ProjectLayoutStore, TaskListStore, TaskListSettingsStore, TaskStore, CssConfigStore, MemberStore,
-InviteStore, RemoteStore, TaskMetadataStore, DirectoryStore, ProjectFactory, ChecklistSettingsFactory, TaskCommentFactory} from '../../pounder-stores';
+InviteStore, RemoteStore, TaskMetadataStore, DirectoryStore, ProjectFactory, ChecklistSettingsFactory, TaskCommentFactory,
+LayoutEntryFactory} from '../../pounder-stores';
 import Moment from 'moment';
 import { includeMetadataChanges } from '../index';
 import parseArgs from 'minimist';
@@ -2369,16 +2370,16 @@ export function updateProjectLayoutAsync(layouts, oldLayouts, projectId, taskLis
             var projectLayoutRef = getProjectLayoutRef(getFirestore, getState, projectId).doc(targetProjectLayoutId);
             batch.update(projectLayoutRef, { layouts: newTrimmedLayouts });
 
-            // taskListIdsToFoul - Task Lists that don't yet have a corresponding Project Layout entity are considered
-            // 'fresh', they have a property 'isFresh' that tracks that. By virtue of the fact that we are updating a
-            // projects layout, we can also update any fresh Task Lists isFresh property. ie: fouling them.
-            if (taskListIdsToFoul !== undefined && taskListIdsToFoul !== null) {
-                taskListIdsToFoul.forEach(id => {
-                    var ref = getTaskListRef(getFirestore, getState, id);
+            // // taskListIdsToFoul - Task Lists that don't yet have a corresponding Project Layout entity are considered
+            // // 'fresh', they have a property 'isFresh' that tracks that. By virtue of the fact that we are updating a
+            // // projects layout, we can also update any fresh Task Lists isFresh property. ie: fouling them.
+            // if (taskListIdsToFoul !== undefined && taskListIdsToFoul !== null) {
+            //     taskListIdsToFoul.forEach(id => {
+            //         var ref = getTaskListRef(getFirestore, getState, id);
 
-                    batch.update(ref, { isFresh: false });
-                })
-            }
+            //         batch.update(ref, { isFresh: false });
+            //     })
+            // }
 
             batch.commit().then(() => {
                 // Carefull what you do here, promises don't resolve if you are offline.
@@ -2652,6 +2653,8 @@ export function addNewTaskListAsync() {
 
         if (selectedProjectId !== -1) {
             // Add to Firestore.
+            var batch = getFirestore().batch();
+
             var newTaskListRef;
 
             if (isProjectRemote(getState, selectedProjectId)) {
@@ -2671,11 +2674,16 @@ export function addNewTaskListAsync() {
                 true,
             )
 
+            batch.set(newTaskListRef, { ...newTaskList });
+
             dispatch(changeFocusedTaskList(newTaskListRef.id));
             dispatch(setOpenTaskListWidgetHeaderId(newTaskListRef.id));
+            
+            // Add a new Entry into the ProjectLayouts for this Task List.
+            addProjectLayoutEntriesToBatch(batch, selectedProjectId, newTaskListRef.id, getFirestore, getState);
 
-            newTaskListRef.set(Object.assign({}, newTaskList)).then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
+            batch.commit().then( () => {
+                // Success
             }).catch(error => {
                 handleFirebaseUpdateError(error, getState(), dispatch);
             })
@@ -2685,6 +2693,7 @@ export function addNewTaskListAsync() {
         }
     }
 }
+
 
 export function addNewTaskListWithNameAsync(taskListName) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
@@ -2696,6 +2705,8 @@ export function addNewTaskListWithNameAsync(taskListName) {
 
         if (selectedProjectId !== -1) {
             // Add to Firestore.
+            var batch = getFirestore().batch();
+
             var newTaskListRef;
 
             if (isProjectRemote(getState, selectedProjectId)) {
@@ -2715,13 +2726,18 @@ export function addNewTaskListWithNameAsync(taskListName) {
                 true,
             )
 
-            dispatch(changeFocusedTaskList(newTaskListRef.id));
+            batch.set(newTaskListRef, { ...newTaskList });
 
-            newTaskListRef.set(Object.assign({}, newTaskList)).then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
+            // Add a new Entry into the ProjectLayouts for this Task List.
+            addProjectLayoutEntriesToBatch(batch, selectedProjectId, newTaskListRef.id, getFirestore, getState);
+
+            batch.commit().then(() => {
+                // Careful what you do here, promises don't resolve if you are offline.
             }).catch(error => {
                 handleFirebaseUpdateError(error, getState(), dispatch);
             })
+
+            dispatch(changeFocusedTaskList(newTaskListRef.id));
 
             // Project updated metadata.
             updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
@@ -3502,4 +3518,18 @@ function syncAppToConfig(generalConfig, dispatch) {
 function hasUserGotALocalLayout(state) {
     var selectedProjectId = state.selectedProjectId;
     return state.projectLayoutsMap[selectedProjectId][getUserUid()] !== undefined;
+}
+
+function addProjectLayoutEntriesToBatch(batch, selectedProjectId, taskListId, getFirestore, getState) {
+    var newLayoutEntry = LayoutEntryFactory(taskListId);
+
+    // Iterate through all layouts for this Project and add the entry to them.
+    for (var uid in getState().projectLayoutsMap[selectedProjectId]) {
+        var ref = getProjectLayoutRef(getFirestore, getState, selectedProjectId).doc(uid);
+
+        var newLayouts = [ ...getState().projectLayoutsMap[selectedProjectId][uid].layouts ];
+        newLayouts.push(newLayoutEntry);
+
+        batch.update(ref, { layouts: newLayouts });
+    }
 }
