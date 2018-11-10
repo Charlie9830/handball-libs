@@ -166,6 +166,13 @@ export function TaskCommentFactory(uid, text, mentions, created, createdBy, seen
     }
 }
 
+export function JobFactory(type, payload) {
+    return {
+        type: type,
+        payload: payload
+    }
+}
+
 export function GetFreshLayout(taskListWidgetId) {
     return {i: taskListWidgetId, x: 0, y: 0, w: 6, h: 4, isFresh: true }
 }

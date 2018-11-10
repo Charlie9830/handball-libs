@@ -1,11 +1,12 @@
 import * as ActionTypes from '../action-types/index';
 import FirestoreBatchPaginator from '../../firestore-batch-paginator';
 import { USERS, PROJECTS, PROJECTLAYOUTS, TASKS, TASKLISTS, ACCOUNT, ACCOUNT_DOC_ID,
-     REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY, TASKCOMMENTS } from '../../pounder-firebase/paths';
+     REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY, TASKCOMMENTS, JOBS_QUEUE } from '../../pounder-firebase/paths';
 import { setUserUid, getUserUid, TaskCommentQueryLimit } from '../../pounder-firebase';
 import { ProjectStore, ProjectLayoutStore, TaskListStore, TaskListSettingsStore, TaskStore, CssConfigStore, MemberStore,
 InviteStore, RemoteStore, TaskMetadataStore, DirectoryStore, ProjectFactory, ChecklistSettingsFactory, TaskCommentFactory,
-LayoutEntryFactory} from '../../pounder-stores';
+LayoutEntryFactory, JobFactory} from '../../pounder-stores';
+import * as JobTypes from '../../pounder-firebase/jobTypes';
 import Moment from 'moment';
 import { includeMetadataChanges } from '../index';
 import parseArgs from 'minimist';
@@ -627,6 +628,104 @@ function endTaskMove(movingTaskId, destinationTaskListWidgetId) {
 }
 
 // Thunks
+export function moveTaskListToProjectAsync(sourceProjectId, targetProjectId, taskListWidgetId) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        if (!isProjectRemote(getState, sourceProjectId) && !isProjectRemote(getState, targetProjectId) ) {
+            // Both Projects are Local.
+            var batch = new FirestoreBatchPaginator(getFirestore());
+
+            // Move Tasks.
+            var taskIds = collectTaskListRelatedTaskIds(getState().tasks, taskListWidgetId);
+
+            taskIds.forEach( id => {
+                var ref = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc(id);
+                batch.update(ref, { project: targetProjectId });
+            })
+
+            // Move Task List.
+            var taskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc(taskListWidgetId);
+
+            batch.update(taskListRef, { project: targetProjectId });
+
+            // Move Layout.
+            var currentLayouts = getState().projectLayoutsMap[sourceProjectId][sourceProjectId].layouts;
+            if (currentLayouts) {
+                var filteredLayouts = currentLayouts.filter(item => {
+                    return item.i !== taskListWidgetId;
+                })
+
+                dispatch(updateProjectLayoutAsync(filteredLayouts, currentLayouts, sourceProjectId));
+                addProjectLayoutEntriesToBatch(batch, targetProjectId, taskListWidgetId, getFirestore, getState);
+            }
+
+            var payload = {
+                targetProjectId: targetProjectId,
+                taskListWidgetId: taskListWidgetId,
+                sourceTasksRefPath: getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).path,
+            }
+
+            var job = JobFactory(JobTypes.CLEANUP_LOCAL_TASKLIST_MOVE, payload);
+            var jobRef = getFirestore().collection(JOBS_QUEUE).doc();
+            batch.set(jobRef, job);
+
+            batch.commit().then( () => {
+                // Success
+            }).catch(error => {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            })
+
+            dispatch(selectProject(targetProjectId));
+        }
+
+        else {
+            // One or both projects are Remote.
+            var batch = new FirestoreBatchPaginator(getFirestore());
+            
+            var refs = buildTaskListMoveRefs(sourceProjectId, targetProjectId, taskListWidgetId, getFirestore, getState);
+
+            // Move Tasks
+            var tasks = collectTaskListRelatedTasks(getState().tasks, taskListWidgetId);
+
+            tasks.forEach(task => {
+                batch.set(refs.target.tasks.doc(task.uid), { ...task, project: targetProjectId });
+            })
+
+            // Move Task List.
+            var taskList = getState().taskLists.find(item => { return item.uid === taskListWidgetId });
+
+            batch.set(refs.target.taskList, {...taskList, project: targetProjectId });
+            batch.update(refs.source.taskList, { isMoving: true });
+
+            // Move Project Layouts.
+            addProjectLayoutMovesToBatch(batch, sourceProjectId, targetProjectId, taskListWidgetId, getFirestore, getState);
+
+            // Create a Cleanup Job for the Server.
+            var payload = {
+                sourceProjectId: sourceProjectId,
+                targetProjectId: targetProjectId,
+                taskListWidgetId: taskListWidgetId,
+                taskIds: collectTaskListRelatedTaskIds(getState().tasks, taskListWidgetId),
+                targetTasksRefPath: refs.target.tasks.path,
+                targetTaskListRefPath: refs.target.taskList.path,
+                sourceTasksRefPath: refs.source.tasks.path,
+                sourceTaskListRefPath: refs.source.taskList.path,
+            }
+
+            var job = JobFactory(JobTypes.CLEANUP_REMOTE_TASKLIST_MOVE, payload);
+            var jobRef = getFirestore().collection(JOBS_QUEUE).doc();
+            batch.set(jobRef, job);
+
+            batch.commit().then( () => {
+                // Success
+            }).catch( error => {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            })
+
+            dispatch(selectProject(targetProjectId));
+        }
+    }
+}
+
 export function updateProjectLayoutTypeAsync(projectLayoutType) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         var selectedProjectId = getState().selectedProjectId;
@@ -2345,7 +2444,7 @@ export function updateTaskCompleteAsync(taskListWidgetId, taskId, newValue, oldV
                     completedOn: completedOn,
                 })
             }).then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.h.
+                // Carefull what you do here, promises don't resolve if you are offline.
             }).catch(error => {
                 handleFirebaseUpdateError(error, getState(), dispatch);
             })
@@ -2356,7 +2455,7 @@ export function updateTaskCompleteAsync(taskListWidgetId, taskId, newValue, oldV
     }
 }
 
-export function updateProjectLayoutAsync(layouts, oldLayouts, projectId, taskListIdsToFoul) {
+export function updateProjectLayoutAsync(layouts, oldLayouts, projectId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         var newTrimmedLayouts = sanitizeLayouts(layouts);
         var oldTrimmedLayouts = sanitizeLayouts(oldLayouts);
@@ -2883,6 +2982,12 @@ function handleTaskListsSnapshot(getState, dispatch, isRemote, snapshot, remoteP
         var taskLists = [];
         var checklists = [];
         snapshot.forEach(doc => {
+            if (doc.data().isMoving) {
+                // Task list has been moved to another Project but Cloud function has not cleaned it up yet, don't add it to
+                // State.
+                return;
+            }
+
             var taskList = coerceTaskList(doc.data());
             taskLists.push(taskList);
 
@@ -3473,11 +3578,18 @@ function collectProjectRelatedTaskIds(tasks, projectId) {
 
 function collectTaskListRelatedTaskIds(tasks, taskListWidgetId) {
     // Collect related TaskIds.
-    var taskIds = tasks.filter(task => {
-        return task.taskList === taskListWidgetId;
-    }).map(task => { return task.uid });
+    var taskIds = collectTaskListRelatedTasks(tasks, taskListWidgetId).map(task => { return task.uid });
 
     return taskIds;
+}
+
+function collectTaskListRelatedTasks(tasks, taskListWidgetId) {
+    // Collect related TaskIds.
+    var tasks = tasks.filter(task => {
+        return task.taskList === taskListWidgetId;
+    })
+
+    return tasks;
 }
 
 
@@ -3509,16 +3621,92 @@ function hasUserGotALocalLayout(state) {
     return state.projectLayoutsMap[selectedProjectId][getUserUid()] !== undefined;
 }
 
-function addProjectLayoutEntriesToBatch(batch, selectedProjectId, taskListId, getFirestore, getState) {
+function addProjectLayoutEntriesToBatch(batch, projectId, taskListId, getFirestore, getState) {
     var newLayoutEntry = LayoutEntryFactory(taskListId);
 
     // Iterate through all layouts for this Project and add the entry to them.
-    for (var uid in getState().projectLayoutsMap[selectedProjectId]) {
-        var ref = getProjectLayoutRef(getFirestore, getState, selectedProjectId).doc(uid);
+    for (var uid in getState().projectLayoutsMap[projectId]) {
+        var ref = getProjectLayoutRef(getFirestore, getState, projectId).doc(uid);
 
-        var newLayouts = [ ...getState().projectLayoutsMap[selectedProjectId][uid].layouts ];
+        var newLayouts = [ ...getState().projectLayoutsMap[projectId][uid].layouts ];
         newLayouts.push(newLayoutEntry);
 
         batch.update(ref, { layouts: newLayouts });
+    }
+}
+
+function buildTaskListMoveRefs(sourceProjectId, targetProjectId, taskListWidgetId, getFirestore, getState) {
+    var sourceTasksRef;
+    var sourceTaskListRef;
+    var targetTasksRef;
+    var targetTaskListRef;
+
+    // Source Project.
+    if (isProjectRemote(getState, sourceProjectId) === true) {
+        // Remote
+        sourceTasksRef = getFirestore().collection(REMOTES).doc(sourceProjectId).collection(TASKS);
+        sourceTaskListRef = getFirestore().collection(REMOTES).doc(sourceProjectId).collection(TASKLISTS).doc(taskListWidgetId);
+    }
+
+    else {
+        // Local
+        sourceTasksRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS);
+        sourceTaskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc(taskListWidgetId);
+    }
+
+    // Target Project.
+    if (isProjectRemote(getState, targetProjectId) === true) {
+        // Remote
+        targetTasksRef = getFirestore().collection(REMOTES).doc(targetProjectId).collection(TASKS);
+        targetTaskListRef = getFirestore().collection(REMOTES).doc(targetProjectId).collection(TASKLISTS).doc(taskListWidgetId);
+    }
+
+    else {
+        // Local
+        targetTasksRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS);
+        targetTaskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc(taskListWidgetId);
+    }
+
+    return {
+        source: {
+            tasks: sourceTasksRef,
+            taskList: sourceTaskListRef
+        },
+        target: {
+            tasks: targetTasksRef,
+            taskList: targetTaskListRef
+        }
+    }
+}
+
+function addProjectLayoutMovesToBatch(batch, sourceProjectId, targetProjectId, taskListWidgetId, getFirestore, getState) {
+    // Move project Layout Entries.
+    var sourceProjectLayouts = getState().projectLayoutsMap[sourceProjectId];
+    var targetProjectLayouts = getState().projectLayoutsMap[targetProjectId];
+
+    // Delete Layout Entry from Source Project.
+    for (var layoutId in sourceProjectLayouts) {
+        var layouts = sourceProjectLayouts[layoutId].layouts;
+        if (layouts) {
+            var filteredLayouts = layouts.filter(item => {
+                return item.i !== taskListWidgetId;
+            })
+            
+            batch.update(getProjectLayoutRef(getFirestore, getState, sourceProjectId).doc(layoutId), { layouts: filteredLayouts });
+        }
+    }
+
+    // Place new Layout in Target Project.
+    for (var layoutId in targetProjectLayouts) {
+        var layouts = targetProjectLayouts[layoutId].layouts;
+        var newLayouts = [];
+
+        // If Layouts already exist. Use it, else use a blank Array to start with.
+        if (layouts) {
+            newLayouts = [...layouts];
+        }
+        newLayouts.push(LayoutEntryFactory(taskListWidgetId));
+
+        batch.update(getProjectLayoutRef(getFirestore, getState, targetProjectId).doc(layoutId), { layouts: newLayouts});
     }
 }

@@ -13,6 +13,7 @@ module.exports = function (grunt) {
           "libs/pounder-dexie/index.js": "src/pounder-dexie/index.js",
           "libs/pounder-firebase/index.js": "src/pounder-firebase/index.js",
           "libs/pounder-firebase/paths/index.js": "src/pounder-firebase/paths/index.js",
+          "libs/pounder-firebase/jobTypes/index.js": "src/pounder-firebase/jobTypes/index.js",
           "libs/pounder-redux/action-creators/index.js": "src/pounder-redux/action-creators/index.js",
           "libs/pounder-redux/action-types/index.js": "src/pounder-redux/action-types/index.js",
           "libs/pounder-redux/reducers/index.js": "src/pounder-redux/reducers/index.js",

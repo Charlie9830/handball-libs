@@ -1,6 +1,7 @@
 // Firestore Path References.
 export const DIRECTORY = "directory";
 export const USERS = "users";
+export const JOBS_QUEUE = "jobsQueue";
 export const TASKS = "tasks";
 export const TASKCOMMENTS = "taskComments";
 export const TASKLISTS = "taskLists";
