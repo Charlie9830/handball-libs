@@ -97,7 +97,7 @@ export const AccountConfigFallback = {
 }
 
 // Task Comment Query Limit.
-export const TaskCommentQueryLimit = 5;
+export const TaskCommentQueryLimit = 10;
 
 // Firestore Collection Paths.
 let userUid = "";

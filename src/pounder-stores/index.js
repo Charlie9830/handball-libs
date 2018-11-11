@@ -214,4 +214,5 @@ export var CssConfigStore = {
     '--scrollbar-thumb-color': '',
     '--database-synced-color': '',
     '--database-updates-pending-color': '',
+    '--unread-comment-color': '',
 }
