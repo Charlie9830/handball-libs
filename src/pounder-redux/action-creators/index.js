@@ -2759,7 +2759,6 @@ export function addNewTaskListAsync() {
                 newTaskListRef.id,
                 newTaskListRef.id,
                 Object.assign({}, new TaskListSettingsStore(true, "date added", ChecklistSettingsFactory(false,"", "", 1))),
-                true,
             )
 
             batch.set(newTaskListRef, { ...newTaskList });
@@ -2811,7 +2810,6 @@ export function addNewTaskListWithNameAsync(taskListName) {
                 newTaskListRef.id,
                 newTaskListRef.id,
                 Object.assign({}, new TaskListSettingsStore(true, "date added", ChecklistSettingsFactory(false,"", "", 1))),
-                true,
             )
 
             batch.set(newTaskListRef, { ...newTaskList });
