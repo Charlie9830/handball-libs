@@ -699,6 +699,12 @@ export function appReducer(state, action) {
                 selectedProjectLayout: getSelectedProjectLayout(state.selectedProjectId, state.members, state.projectLayoutsMap)
             }
 
+        case ActionTypes.SET_OPEN_CHECKLIST_SETTINGS_ID:
+            return {
+                ...state,
+                openChecklistSettingsId: action.value,
+            }
+
         default:
             console.log("App Reducer is missing a Case for action:  " + action.type);
             return state;

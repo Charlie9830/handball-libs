@@ -109,6 +109,7 @@ var initialState = {
     isAllTaskCommentsFetched: false,
     openTaskInspectorId: -1,
     selectedProjectLayoutType: 'global',
+    openChecklistSettingsId: -1,
 }
 
 export var appStore = createStore(

@@ -207,16 +207,25 @@ export function setAuthStatusMessage(message) {
     }
 }
 
-export function setMessageBox(isOpen, message, type, dataStore, closeCallback) {
+export function setMessageBox(isOpen, dialogTitle, message, type, dataStore, closeCallback) {
     return {
         type: ActionTypes.SET_MESSAGE_BOX,
         value: {
             isOpen: isOpen,
+            dialogTitle: dialogTitle,
             message: message,
             type: type,
             closeCallback: closeCallback,
         }
     }
+}
+
+export function setOpenChecklistSettingsId(id) {
+    return {
+        type: ActionTypes.SET_OPEN_CHECKLIST_SETTINGS_ID,
+        value: id
+    }
+    
 }
 
 export function receiveCSSConfig(config) {
