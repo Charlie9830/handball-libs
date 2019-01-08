@@ -76,10 +76,10 @@ export function setOpenTaskListWidgetHeaderId(taskListId) {
     }
 }
 
-export function setFloatingTextInput(isOpen, currentText, targetType, niceTargetName, targetId) {
+export function setTextInputDialog(isOpen, label, text, title, onCancel, onOkay) {
     return {
-        type: ActionTypes.SET_FLOATING_TEXT_INPUT,
-        value: { isOpen: isOpen, currentText: currentText, targetType: targetType, niceTargetName: niceTargetName, targetId: targetId}
+        type: ActionTypes.SET_TEXT_INPUT_DIALOG,
+        value: { isOpen, label, text, title, onCancel, onOkay,}
     }
 }
 
@@ -145,9 +145,9 @@ export function setIsShareMenuOpen(isOpen) {
         value: isOpen,
     }
 }
-export function setIsSidebarOpen(isOpen) {
+export function setIsAppDrawerOpen(isOpen) {
     return {
-        type: ActionTypes.SET_IS_SIDEBAR_OPEN,
+        type: ActionTypes.SET_IS_APP_DRAWER_OPEN,
         value: isOpen,
     }
 }
@@ -2254,7 +2254,7 @@ export function removeTaskListAsync(taskListWidgetId) {
 export function updateProjectNameAsync(projectId, newValue, oldValue) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setOpenProjectSelectorId(-1));
-        dispatch(setFloatingTextInput(false));
+        dispatch(setTextInputDialog(false));
 
         var coercedValue = newValue === "" ? "Untitled Project" : newValue;
         if (coercedValue !== oldValue) {
@@ -2358,12 +2358,26 @@ export function removeRemoteProjectAsync(projectId) {
 }
 
 export function addNewProjectAsync() {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setShowOnlySelfTasks(false));
+        
+        let dialogResult = await postTextInputDialog(dispatch, getState(), "Name", "", "Add new Project");
+
+        if (dialogResult.result === 'cancel') {
+            return;
+        }
 
         if (getState().isLoggedIn === true) {
+            let dialogResult = await postTextInputDialog(dispatch, getState(), "Name", "", "Add new Project");
+
+            if (dialogResult.result === 'cancel') {
+                return;
+            }
+
+            console.log(dialogResult.value);
+
             // Update Firestore.    
-            var newProjectName = "";
+            var newProjectName = dialogResult.value;
             var batch = getFirestore().batch();
 
             // Project.
@@ -2395,51 +2409,9 @@ export function addNewProjectAsync() {
     }
 }
 
-export function addNewProjectWithNameAsync(projectName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setShowOnlySelfTasks(false));
-        dispatch(setFloatingTextInput(false));
-
-        if (getState().isLoggedIn === true) {
-            // Update Firestore.    
-            var newProjectName = projectName === "" ? "Untitled Project" : projectName;
-            var batch = getFirestore().batch();
-
-            // Project.
-            var newProjectRef = getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTS).doc();
-            var newProjectKey = newProjectRef.id;
-
-            var newProject = new ProjectStore(newProjectName, newProjectKey, false, new Date().toISOString(), "");
-            batch.set(newProjectRef, Object.assign({}, newProject));
-
-            // Layout
-            var newLayoutRef = getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTLAYOUTS).doc(newProjectKey);
-
-            var newProjectLayout = new ProjectLayoutStore([], newProjectKey, newProjectKey);
-            batch.set(newLayoutRef, Object.assign({}, newProjectLayout));
-
-            // Selections.
-            dispatch(selectProject(newProjectKey));
-
-            // Execute Additions.
-            batch.commit().then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-        }
-
-    }
-}
-
-export function updateTaskCompleteAsync(taskListWidgetId, taskId, newValue, oldValue, currentMetadata) {
+export function updateTaskCompleteAsync(taskId, newValue, oldValue, currentMetadata) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (oldValue !== newValue) {
-            if (getState().selectedTask.taskListWidgetId !== taskListWidgetId &&
-                getState().selectedTask.taskId !== taskId) {
-                dispatch(selectTask(taskListWidgetId, taskId, false));
-            }
-
             // Update Firestore.
             var taskRef = getTaskRef(getFirestore, getState, taskId);
             var completedBy = newValue === true ? getState().displayName : "";
@@ -2491,7 +2463,7 @@ export function updateProjectLayoutAsync(layouts, oldLayouts, projectId) {
 export function updateTaskNameAsync(taskListWidgetId, taskId, newValue, oldValue, currentMetadata) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(closeTask(taskListWidgetId, taskId));
-        dispatch(setFloatingTextInput(false));
+        dispatch(setTextInputDialog(false));
 
             // Because we Reset the new task property. (Which supports pushing new Tasks to the top of the List).
             // We can't perform an equality check. We have to naievly update.
@@ -2575,7 +2547,7 @@ function deleteTaskAsync(getFirestore, getState, taskId) {
 export function updateTaskListWidgetHeaderAsync(taskListWidgetId, newName, oldName) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setOpenTaskListWidgetHeaderId(-1));
-        dispatch(setFloatingTextInput(false));
+        dispatch(setTextInputDialog(false));
 
         if (newName !== oldName) {
             var taskListRef = getTaskListRef(getFirestore, getState, taskListWidgetId);
@@ -2684,7 +2656,7 @@ export function addNewTaskWithNameAsync(taskName) {
         if (selectedProjectId !== -1 && focusedTaskListId !== -1) {
             // Add a new Task.
             dispatch(startTaskAdd());
-            dispatch(setFloatingTextInput(false));
+            dispatch(setTextInputDialog(false));
             dispatch(closeTask(focusedTaskListId, newTaskKey)); // Close the Task Input for brevity. Even though
             // technically we don't use this in Mobile.
 
@@ -2795,7 +2767,7 @@ export function addNewTaskListWithNameAsync(taskListName) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setShowOnlySelfTasks(false));
         dispatch(startTasklistAdd());
-        dispatch(setFloatingTextInput(false));
+        dispatch(setTextInputDialog(false));
 
         var selectedProjectId = getState().selectedProjectId;
 
@@ -2855,7 +2827,7 @@ export function getAccountConfigAsync() {
                 dispatch(selectProject(favouriteProjectId));
                 
                 if (HANDBALL_DEVICE === "mobile" && favouriteProjectId !== -1) {
-                    dispatch(setIsSidebarOpen(false));
+                    dispatch(setIsAppDrawerOpen(false));
                     dispatch(setIsAppSettingsOpen(false));
                 }
             }
@@ -3716,4 +3688,34 @@ function addProjectLayoutMovesToBatch(batch, sourceProjectId, targetProjectId, t
 
         batch.update(getProjectLayoutRef(getFirestore, getState, targetProjectId).doc(layoutId), { layouts: newLayouts});
     }
+}
+
+ function postTextInputDialog(dispatch, state, label, text, title) {
+    return new Promise( (resolve, reject) => {
+        let onCancel = () => {
+            dispatch(setTextInputDialog(false,
+                state.textInputDialog.label,
+                state.textInputDialog.text,
+                state.textInputDialog.title,
+                () => { },
+                () => { },
+            ))
+
+            resolve({ result: 'cancel', value: null });
+        }
+
+        let onOkay = (newValue) => {
+            dispatch(setTextInputDialog(false,
+                state.textInputDialog.label,
+                state.textInputDialog.text,
+                state.textInputDialog.title,
+                () => { },
+                () => { },
+            ))
+
+            resolve({ result: 'okay', value: newValue})
+        }
+
+        dispatch(setTextInputDialog(true, label, text, title, onCancel, onOkay));
+    })
 }

@@ -61,10 +61,10 @@ export function appReducer(state, action) {
                 }
             }
 
-        case ActionTypes.SET_IS_SIDEBAR_OPEN:
+        case ActionTypes.SET_IS_APP_DRAWER_OPEN:
             return {
                 ...state,
-                isSidebarOpen: action.value,
+                isAppDrawerOpen: action.value,
             }
 
         case ActionTypes.START_TASK_MOVE:
@@ -129,10 +129,10 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: true
             }
 
-        case ActionTypes.SET_FLOATING_TEXT_INPUT:
+        case ActionTypes.SET_TEXT_INPUT_DIALOG:
             return {
                 ...state,
-                floatingTextInput: action.value,
+                textInputDialog: action.value,
             }
         
         case ActionTypes.RECEIVE_LOCAL_PROJECTS:
@@ -825,19 +825,19 @@ function getProjectSelectorIndicatorsHelper(tasks) {
             var { className } = ParseDueDate(item.isComplete, item.dueDate);
             switch (className) {
                 case "DueDate Later":
-                    returnList[item.project].greens += 1;
+                    returnList[item.project].later += 1;
                     break;
 
                 case "DueDate Soon":
-                    returnList[item.project].yellows += 1;
+                    returnList[item.project].soon += 1;
                     break;
 
                 case "DueDate Today":
-                    returnList[item.project].yellowReds += 1;
+                    returnList[item.project].today += 1;
                     break;
 
                 case "DueDate Overdue":
-                    returnList[item.project].reds += 1;
+                    returnList[item.project].overdue += 1;
                     break;
 
                 default:

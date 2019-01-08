@@ -5,8 +5,8 @@ module.exports = function (grunt) {
     "babel": {
       options: {
         sourceMap: false,
-        presets: ['env'],
-        plugins: ['transform-object-rest-spread']
+        presets: ['@babel/preset-env'],
+        // plugins: ['@babel/plugin-transform-async-to-generator','transform-object-rest-spread']
       },
       dist: {
         files: {
