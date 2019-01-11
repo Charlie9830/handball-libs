@@ -108,6 +108,7 @@ var initialState = {
     isTaskCommentsPaginating: false,
     isAllTaskCommentsFetched: false,
     openTaskInspectorId: -1,
+    openTaskInspectorEntity: null,
     selectedProjectLayoutType: 'global',
     openChecklistSettingsId: -1,
 }

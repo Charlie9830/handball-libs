@@ -18,14 +18,14 @@ export function GetDisplayNameFromLookup(userId, memberLookup) {
 export function ParseDueDate(isComplete, dueDate) {
   if (isComplete) {
     return {
-      className: "DueDate Complete",
+      type: "complete",
       text: ""
     }
   }
 
   if (dueDate === "") {
     return {
-      className: "DueDate NotSet",
+      type: "unset",
       text: ""
     }
   }
@@ -37,7 +37,7 @@ export function ParseDueDate(isComplete, dueDate) {
   // Today.
   if (dueDate.isSame(currentDate, 'day')) {
     return {
-      className: "DueDate Today",
+      type: "today",
       text: "Today"
     }
   }
@@ -45,7 +45,7 @@ export function ParseDueDate(isComplete, dueDate) {
   // Tomorrow
   if (dueDate.calendar(currentDate).includes("Tomorrow")) {
     return {
-      className: "DueDate Soon",
+      type: "soon",
       text: 1 + "d"
     }
   }
@@ -53,7 +53,7 @@ export function ParseDueDate(isComplete, dueDate) {
   // Overdue
   if (difference < 0) {
     return {
-      className: "DueDate Overdue",
+      type: "overdue",
       text: "Due"
     }
   }
@@ -61,7 +61,7 @@ export function ParseDueDate(isComplete, dueDate) {
   // Later On
   if (difference >= 1 && difference <= 6) {
     return {
-      className: "DueDate Later",
+      type: "later",
       text: (difference + 1) + "d"
     }
   }
@@ -69,14 +69,14 @@ export function ParseDueDate(isComplete, dueDate) {
   // At least a Week out.
   if (difference >= 7) {
     return {
-      className: "DueDate Later",
+      type: "later",
       text: Math.round(difference / 7) + "w"
     }
   }
 
   else {
     return {
-      className: "DueDate NotSet",
+      type: "unset",
       text: ""
     }
   }

@@ -311,9 +311,9 @@ export function setIsShuttingDownFlag(isShuttingDown) {
     }
 }
 
-export function changeFocusedTaskList(id) {
+export function setFocusedTaskListId(id) {
     return {
-        type: ActionTypes.CHANGE_FOCUSED_TASKLIST,
+        type: ActionTypes.SET_FOCUSED_TASKLIST_ID,
         id: id
     }
 }
@@ -1128,8 +1128,6 @@ export function updateTaskNoteAsync(newValue, oldValue, taskId) {
 
 export function updateTaskAssignedToAsync(newUserId, oldUserId, taskId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setOpenTaskInspectorId(-1));
-
         if (newUserId !== oldUserId) {
             var taskRef = getTaskRef(getFirestore, getState, taskId);
 
@@ -1936,6 +1934,9 @@ export function logInUserAsync(email,password) {
         dispatch(setIsLoggingInFlag(true));
         dispatch(setAuthStatusMessage("Logging in"));
 
+        console.log(email);
+        console.log(password);
+
         var parsedEmail = email.toLowerCase().trim();
 
         // Set Persistence.
@@ -2136,8 +2137,6 @@ export function getDatabaseInfoAsync() {
 
 export function updateTaskPriorityAsync(taskId, newValue, oldValue) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setOpenTaskInspectorId(-1));
-
         if (newValue !== oldValue) {
             // Determine Reference.
             var taskRef = getTaskRef(getFirestore, getState, taskId);
@@ -2158,9 +2157,9 @@ export function updateTaskPriorityAsync(taskId, newValue, oldValue) {
     }
 }
 
-export function updateTaskDueDateAsync(taskId, newDate, oldDate) {
+export function updateTaskDueDateAsync(taskId, newMoment, oldDate) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setOpenTaskInspectorId(-1));
+        let newDate = newMoment === null ? "" : newMoment.toISOString(); 
 
         if (newDate !== oldDate) {
             // Update Firestore.
@@ -2241,7 +2240,7 @@ export function removeTaskListAsync(taskListWidgetId) {
                 handleFirebaseUpdateError(error, getState(), dispatch);
             })
 
-            dispatch(changeFocusedTaskList(-1));
+            dispatch(setFocusedTaskListId(-1));
 
             // Project updated metadata.
             updateProjectUpdatedTime(getState, getFirestore, selectedProjectId);
@@ -2360,12 +2359,6 @@ export function removeRemoteProjectAsync(projectId) {
 export function addNewProjectAsync() {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setShowOnlySelfTasks(false));
-        
-        let dialogResult = await postTextInputDialog(dispatch, getState(), "Name", "", "Add new Project");
-
-        if (dialogResult.result === 'cancel') {
-            return;
-        }
 
         if (getState().isLoggedIn === true) {
             let dialogResult = await postTextInputDialog(dispatch, getState(), "Name", "", "Add new Project");
@@ -2373,8 +2366,6 @@ export function addNewProjectAsync() {
             if (dialogResult.result === 'cancel') {
                 return;
             }
-
-            console.log(dialogResult.value);
 
             // Update Firestore.    
             var newProjectName = dialogResult.value;
@@ -2410,7 +2401,7 @@ export function addNewProjectAsync() {
 }
 
 export function updateTaskCompleteAsync(taskId, newValue, oldValue, currentMetadata) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (oldValue !== newValue) {
             // Update Firestore.
             var taskRef = getTaskRef(getFirestore, getState, taskId);
@@ -2460,33 +2451,33 @@ export function updateProjectLayoutAsync(layouts, oldLayouts, projectId) {
 }
 
 
-export function updateTaskNameAsync(taskListWidgetId, taskId, newValue, oldValue, currentMetadata) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(closeTask(taskListWidgetId, taskId));
-        dispatch(setTextInputDialog(false));
+export function updateTaskNameAsync(taskId, currentValue, currentMetadata) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+            let dialogResult = await postTextInputDialog(dispatch, getState(), "Name", currentValue, "Edit Task name");
 
-            // Because we Reset the new task property. (Which supports pushing new Tasks to the top of the List).
-            // We can't perform an equality check. We have to naievly update.
+            if (dialogResult.result === "okay") {
+                let newValue = dialogResult.value;
 
-            var update = {
-                taskName: newValue,
-                isNewTask: false, // Reset new Task Property.
-                metadata: getUpdatedMetadata(currentMetadata, { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
-            }
-
-            // Returns a new Update Object with arguments parsed in (if any);
-            var newUpdate = parseArgumentsIntoUpdate(getState, update);
-
-            // Update Firestore.
-            var taskRef = getTaskRef(getFirestore, getState, taskId);
-            taskRef.update(newUpdate).then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-
-            // Project updated metadata.
-            updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+                var update = {
+                    taskName: newValue,
+                    isNewTask: false, // Reset new Task Property.
+                    metadata: getUpdatedMetadata(currentMetadata, { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
+                }
+    
+                // Returns a new Update Object with arguments parsed in (if any);
+                var newUpdate = parseArgumentsIntoUpdate(getState, update);
+    
+                // Update Firestore.
+                var taskRef = getTaskRef(getFirestore, getState, taskId);
+                taskRef.update(newUpdate).then(() => {
+                    // Carefull what you do here, promises don't resolve if you are offline.
+                }).catch(error => {
+                    handleFirebaseUpdateError(error, getState(), dispatch);
+                })
+    
+                // Project updated metadata.
+                updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+            }  
     }
 }
 
@@ -2586,7 +2577,7 @@ export function moveTaskAsync(destinationTaskListId, taskId) {
         })
 
         dispatch(endTaskMove(movingTaskId, destinationTaskListId));
-        dispatch(changeFocusedTaskList(destinationTaskListId));
+        dispatch(setFocusedTaskListId(destinationTaskListId));
 
         // Project updated metadata.
         updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
@@ -2595,18 +2586,17 @@ export function moveTaskAsync(destinationTaskListId, taskId) {
 
 
 export function addNewTaskAsync() {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setShowOnlySelfTasks(false));
 
-        if (getState().focusedTaskListId !== -1) {
+        let { focusedTaskListId, selectedProjectId } = getState();
+        if (selectedProjectId !== -1 && focusedTaskListId !== -1) {
+            let dialogResult = await postTextInputDialog(dispatch, getState(), "Name", "", "Create Task");
+            if (dialogResult.result === "okay") {
+                let taskName = dialogResult.value;
 
-            const { selectedProjectId, focusedTaskListId } = getState();
-
-            if (selectedProjectId !== -1 && focusedTaskListId !== -1) {
-                // Add a new Task.
-                dispatch(startTaskAdd());
-
-                var newTaskRef;
+                // Add new Task.
+                let newTaskRef;
                 if (isProjectRemote(getState, getState().selectedProjectId)) {
                     newTaskRef = getFirestore().collection(REMOTES).doc(getState().selectedProjectId).collection(TASKS).doc();
                 }
@@ -2614,21 +2604,32 @@ export function addNewTaskAsync() {
                 else {
                     newTaskRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc();
                 }
-                
-                var metadata = new TaskMetadataStore(getState().displayName, getHumanFriendlyDate(new Date()), "", "", "","");
 
-                var newTaskKey = newTaskRef.id;
-                var newTask = new TaskStore(
-                    "",
-                    "",
+                let metadata = new TaskMetadataStore(getState().displayName, getHumanFriendlyDate(new Date()), "", "", "", "");
+
+                // Parse Arguments into an Update Object.
+                let parsedUpdate = parseArgumentsIntoUpdate(getState, {
+                    taskName: taskName,
+                    dueDate: "",
+                    isHighPriority: false
+                });
+
+                let parsedTaskName = parsedUpdate.taskName;
+                let parsedDueDate = parsedUpdate.dueDate;
+                let parsedPriority = parsedUpdate.isHighPriority;
+
+                let newTaskKey = newTaskRef.id;
+                let newTask = new TaskStore(
+                    parsedTaskName,
+                    parsedDueDate,
                     false,
                     selectedProjectId,
                     focusedTaskListId,
                     newTaskKey,
                     new Moment().toISOString(),
-                    true,
                     false,
-                    Object.assign({},metadata),
+                    parsedPriority,
+                    Object.assign({}, metadata),
                     -1,
                 )
 
@@ -2637,177 +2638,59 @@ export function addNewTaskAsync() {
                     handleFirebaseUpdateError(error, getState(), dispatch);
                 })
 
-                dispatch(openTask(newTask.taskList, newTask.uid)); // Opening a Task by convention Selects it.
-
                 // Project updated metadata.
                 updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
-
             }
-        }
-    }
-}
-
-export function addNewTaskWithNameAsync(taskName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setShowOnlySelfTasks(false));
-
-        const { selectedProjectId, focusedTaskListId } = getState();
-
-        if (selectedProjectId !== -1 && focusedTaskListId !== -1) {
-            // Add a new Task.
-            dispatch(startTaskAdd());
-            dispatch(setTextInputDialog(false));
-            dispatch(closeTask(focusedTaskListId, newTaskKey)); // Close the Task Input for brevity. Even though
-            // technically we don't use this in Mobile.
-
-            var newTaskRef;
-            if (isProjectRemote(getState, getState().selectedProjectId)) {
-                newTaskRef = getFirestore().collection(REMOTES).doc(getState().selectedProjectId).collection(TASKS).doc();
-            }
-
-            else {
-                newTaskRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc();
-            }
-
-            var metadata = new TaskMetadataStore(getState().displayName, getHumanFriendlyDate(new Date()), "", "", "","");
-
-            
-            // Parse Arguments into an Update Object.
-            var parsedUpdate = parseArgumentsIntoUpdate(getState, { 
-                taskName: taskName,
-                dueDate: "",
-                isHighPriority: false
-            });
-
-            var parsedTaskName = parsedUpdate.taskName;
-            var parsedDueDate = parsedUpdate.dueDate;
-            var parsedPriority = parsedUpdate.isHighPriority;
-
-
-            var newTaskKey = newTaskRef.id;
-            var newTask = new TaskStore(
-                parsedTaskName,
-                parsedDueDate,
-                false,
-                selectedProjectId,
-                focusedTaskListId,
-                newTaskKey,
-                new Moment().toISOString(),
-                false,
-                parsedPriority,
-                Object.assign({}, metadata),
-                -1,
-            )
-
-            newTaskRef.set(Object.assign({}, newTask)).then(() => {
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-
-            dispatch(selectTask(focusedTaskListId, newTaskKey, false));
-
-            // Project updated metadata.
-            updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
-
         }
     }
 }
 
 export function addNewTaskListAsync() {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setShowOnlySelfTasks(false));
-        dispatch(startTasklistAdd());
-
         var selectedProjectId = getState().selectedProjectId;
 
         if (selectedProjectId !== -1) {
-            // Add to Firestore.
-            var batch = getFirestore().batch();
+            let dialogResult = await postTextInputDialog(dispatch, getState(), "List name", "", "Create List");
+            if (dialogResult.result === "okay") {
+                let taskListName = dialogResult.value;
+                // Add to Firestore.
+                let batch = getFirestore().batch();
 
-            var newTaskListRef;
+                let newTaskListRef;
 
-            if (isProjectRemote(getState, selectedProjectId)) {
-                newTaskListRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKLISTS).doc();
+                if (isProjectRemote(getState, selectedProjectId)) {
+                    newTaskListRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKLISTS).doc();
+                }
+
+                else {
+                    newTaskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc();
+                }
+
+                let newTaskList = new TaskListStore(
+                    taskListName,
+                    selectedProjectId,
+                    newTaskListRef.id,
+                    newTaskListRef.id,
+                    Object.assign({}, new TaskListSettingsStore(true, "date added", ChecklistSettingsFactory(false, "", "", 1))),
+                )
+
+                batch.set(newTaskListRef, { ...newTaskList });
+
+                // Add a new Entry into the ProjectLayouts for this Task List.
+                addProjectLayoutEntriesToBatch(batch, selectedProjectId, newTaskListRef.id, getFirestore, getState);
+
+                batch.commit().then(() => {
+                    // Careful what you do here, promises don't resolve if you are offline.
+                }).catch(error => {
+                    handleFirebaseUpdateError(error, getState(), dispatch);
+                })
+
+                dispatch(setFocusedTaskListId(newTaskListRef.id));
+
+                // Project updated metadata.
+                updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
             }
-            
-            else {
-                newTaskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc();
-            }
-
-            var newTaskList = new TaskListStore(
-                "",
-                selectedProjectId,
-                newTaskListRef.id,
-                newTaskListRef.id,
-                Object.assign({}, new TaskListSettingsStore(true, "date added", ChecklistSettingsFactory(false,"", "", 1))),
-            )
-
-            batch.set(newTaskListRef, { ...newTaskList });
-
-            dispatch(changeFocusedTaskList(newTaskListRef.id));
-            dispatch(setOpenTaskListWidgetHeaderId(newTaskListRef.id));
-            
-            // Add a new Entry into the ProjectLayouts for this Task List.
-            addProjectLayoutEntriesToBatch(batch, selectedProjectId, newTaskListRef.id, getFirestore, getState);
-
-            batch.commit().then( () => {
-                // Success
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-
-            // Project updated metadata.
-            updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
-        }
-    }
-}
-
-
-export function addNewTaskListWithNameAsync(taskListName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setShowOnlySelfTasks(false));
-        dispatch(startTasklistAdd());
-        dispatch(setTextInputDialog(false));
-
-        var selectedProjectId = getState().selectedProjectId;
-
-        if (selectedProjectId !== -1) {
-            // Add to Firestore.
-            var batch = getFirestore().batch();
-
-            var newTaskListRef;
-
-            if (isProjectRemote(getState, selectedProjectId)) {
-                newTaskListRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKLISTS).doc();
-            }
-            
-            else {
-                newTaskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc();
-            }
-
-            var newTaskList = new TaskListStore(
-                taskListName,
-                selectedProjectId,
-                newTaskListRef.id,
-                newTaskListRef.id,
-                Object.assign({}, new TaskListSettingsStore(true, "date added", ChecklistSettingsFactory(false,"", "", 1))),
-            )
-
-            batch.set(newTaskListRef, { ...newTaskList });
-
-            // Add a new Entry into the ProjectLayouts for this Task List.
-            addProjectLayoutEntriesToBatch(batch, selectedProjectId, newTaskListRef.id, getFirestore, getState);
-
-            batch.commit().then(() => {
-                // Careful what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-
-            dispatch(changeFocusedTaskList(newTaskListRef.id));
-
-            // Project updated metadata.
-            updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
         }
     }
 }
@@ -2902,7 +2785,13 @@ function handleTasksSnapshot(getState, dispatch, isRemote, snapshot, remoteProje
     if (snapshot.docChanges().length > 0) {
         var tasks = [];
         snapshot.forEach(doc => {
-            tasks.push(doc.data());
+            let task = doc.data();
+
+            // Coercion
+            task.dueDate = task.dueDate === null ? "" : task.dueDate;
+            task.metadata = task.metadata === undefined ? { ...new TaskMetadataStore("","","","","","") } : task.metadata;
+
+            tasks.push(task);
         });
 
         // Remote
@@ -3326,6 +3215,8 @@ function handleFirebaseUpdateError(error, state, dispatch) {
 
 
 function handleAuthError(dispatch, error) {
+    console.warn(" You haven't implemented clean handling of Auth errors yet.") 
+    console.warn(error.code);
     switch (error.code) {
         case "auth/wrong-password":
             dispatch(postSnackbarMessage("Incorrect password", true, 'negative-notification'))
@@ -3717,5 +3608,11 @@ function addProjectLayoutMovesToBatch(batch, sourceProjectId, targetProjectId, t
         }
 
         dispatch(setTextInputDialog(true, label, text, title, onCancel, onOkay));
+    })
+}
+
+function wait(ms) {
+    return new Promise( (resolve, reject) => {
+        setTimeout(() => { resolve() }, ms);
     })
 }

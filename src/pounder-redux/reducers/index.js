@@ -5,7 +5,7 @@ import { AccountConfigFallback, getUserUid } from '../../pounder-firebase';
 
 export function appReducer(state, action) {
     switch (action.type) {
-        case ActionTypes.CHANGE_FOCUSED_TASKLIST:
+        case ActionTypes.SET_FOCUSED_TASKLIST_ID:
             return { 
                 ...state,
                 focusedTaskListId: action.id,
@@ -192,6 +192,7 @@ export function appReducer(state, action) {
                 tasks: newTasks,
                 incompletedLocalTasks: action.value,
                 projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks),
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(action.value, state.openTaskInspectorId)
             }
 
         case ActionTypes.RECEIVE_COMPLETED_LOCAL_TASKS:
@@ -201,6 +202,7 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 tasks: newTasks,
                 completedLocalTasks: action.value,
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(action.value, state.openTaskInspectorId),
             }
 
         case ActionTypes.RECEIVE_INCOMPLETED_REMOTE_TASKS:
@@ -210,7 +212,8 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 tasks: newTasks,
                 incompletedRemoteTasks: action.value,
-                projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks)
+                projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks),
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(action.value, state.openTaskInspectorId),
             }
         
         case ActionTypes.RECEIVE_COMPLETED_REMOTE_TASKS:
@@ -220,6 +223,7 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 tasks: newTasks,
                 completedRemoteTasks: action.value,
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(action.value, state.openTaskInspectorId)
             }
 
         case ActionTypes.SET_IS_PROJECT_MENU_OPEN:
@@ -344,6 +348,7 @@ export function appReducer(state, action) {
                 openTaskListSettingsMenuId: -1,
                 isTaskListJumpMenuOpen: false,
                 showOnlySelfTasks: false,
+                isAppDrawerOpen: action.projectId === -1 ? true : false
             }
         
         case ActionTypes.SET_PROJECTS_HAVE_PENDING_WRITES: 
@@ -690,6 +695,7 @@ export function appReducer(state, action) {
             return {
                 ...state,
                 openTaskInspectorId: action.value,
+                openTaskInspectorEntity: action.value === -1 ? null : extractTask(state.tasks, action.value),
             }
         
         case ActionTypes.SET_SELECTED_PROJECT_LAYOUT_TYPE:
@@ -819,24 +825,24 @@ function getProjectSelectorIndicatorsHelper(tasks) {
         if ((item.dueDate !== "" && item.isComplete !== true) || hasUnseenComments) {
             // Create an entry in returnList if not already existing.
             if (returnList[item.project] == undefined) {
-                returnList[item.project] = { greens: 0, yellows: 0, yellowReds: 0, reds: 0, hasUnseenComments: true };
+                returnList[item.project] = { later: 0, soon: 0, today: 0, overdue: 0, hasUnseenComments: true };
             }
 
-            var { className } = ParseDueDate(item.isComplete, item.dueDate);
-            switch (className) {
-                case "DueDate Later":
+            var { type } = ParseDueDate(item.isComplete, item.dueDate);
+            switch (type) {
+                case "later":
                     returnList[item.project].later += 1;
                     break;
 
-                case "DueDate Soon":
+                case "soon":
                     returnList[item.project].soon += 1;
                     break;
 
-                case "DueDate Today":
+                case "today":
                     returnList[item.project].today += 1;
                     break;
 
-                case "DueDate Overdue":
+                case "overdue":
                     returnList[item.project].overdue += 1;
                     break;
 
@@ -886,4 +892,21 @@ function getSelectedProjectLayout(projectId, members, projectLayoutsMap) {
       })
 
       return { ...localLayoutsMap, ...remoteLayoutsMap };
+  }
+
+  function extractTask(tasks, taskId) {
+      return tasks.find( item => {
+          return item.uid === taskId;
+      })
+  }
+
+  function updateOpenTaskInspectorEntity(tasks, taskId) {
+      if (taskId === -1) {
+          // Task Inspector isn't open. No Update requried.
+          return null;
+      }
+
+      else {
+          return extractTask(tasks, taskId);
+      }
   }
