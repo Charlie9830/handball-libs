@@ -6,12 +6,25 @@ const SHORT_DAY_NAMES = ['mon', 'tues', 'tue', 'wed', 'thurs', 'thur', 'fri', 's
 const DAY_NAMES = LONG_DAY_NAMES.concat(SHORT_DAY_NAMES);
 
 export function GetDisplayNameFromLookup(userId, memberLookup) {
-  if (userId === undefined || userId === -1 || userId === "-1") {
+  if (userId === undefined || userId === -1 || userId === "-1" || memberLookup === undefined) {
       return "";
   }
 
   var displayName = memberLookup[userId];
   return displayName === undefined ? "" : displayName;
+}
+
+export function GetProjectMembers(members, projectId) {
+  if (members === undefined || members.length === 0 || projectId === undefined || projectId === -1) {
+    return [];
+  }
+
+  let filteredMembers = [];
+  filteredMembers =  members.filter(item => {
+      return item.project === projectId;
+  })
+
+  return filteredMembers;
 }
 
 
