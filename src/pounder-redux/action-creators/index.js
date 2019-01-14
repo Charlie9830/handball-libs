@@ -2336,22 +2336,27 @@ export function removeTaskListAsync(taskListWidgetId) {
 }
 
 
-export function updateProjectNameAsync(projectId, newValue, oldValue) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setOpenProjectSelectorId(-1));
-        dispatch(setTextInputDialog(false));
+export function updateProjectNameAsync(projectId, oldValue) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let dialogResult = await postTextInputDialog(dispatch, getState(), 'Name', oldValue, 'Rename Project');
+        if (dialogResult.result === 'cancel') {
+            return
+        }
 
-        var coercedValue = newValue === "" ? "Untitled Project" : newValue;
+        let newValue = dialogResult.value;
+        let coercedValue = newValue === "" ? "Untitled Project" : newValue;
         if (coercedValue !== oldValue) {
 
             // Update Firestore.
-            var projectRef = getProjectRef(getFirestore, getState, projectId);
-            projectRef.update({ projectName: coercedValue }).then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
+            try {
+                let projectRef = getProjectRef(getFirestore, getState, projectId);
+                await projectRef.update({ projectName: coercedValue });
+            }
 
+            catch(error) {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            }
+           
             // Project updated metadata.
             updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
         }
