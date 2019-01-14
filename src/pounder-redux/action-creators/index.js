@@ -42,6 +42,13 @@ export function setShowOnlySelfTasks(newValue) {
     }
 }
 
+export function setInformationDialog(isOpen, text, title, onOkay) {
+    return {
+        type: ActionTypes.SET_INFORMATION_DIALOG,
+        value: { isOpen, text, title, onOkay }
+    }
+}
+
 export function cancelTaskMove() {
     return {
         type: ActionTypes.CANCEL_TASK_MOVE,
@@ -170,12 +177,10 @@ export function dismissSnackbar() {
     }
 }
 
-export function postSnackbarMessage(message, isSelfDismissing, type) {
+export function setGeneralSnackbar(isOpen, type, text, selfDismissTime,  actionOptions = { actionButtonText: 'Okay', onAction: () => {}}) {
     return {
-        type: ActionTypes.POST_SNACKBAR_MESSAGE,
-        message: message,
-        isSelfDismissing: isSelfDismissing,
-        snackbarType: type,
+        type: ActionTypes.SET_GENERAL_SNACKBAR,
+        value: { isOpen, type, text, selfDismissTime, actionOptions }
     }
 }
 
@@ -526,6 +531,13 @@ export function receiveIncompletedLocalTasks(value) {
     return {
         type: ActionTypes.RECEIVE_INCOMPLETED_LOCAL_TASKS,
         value: value,
+    }
+}
+
+export function setConfirmationDialog(isOpen, title, text, affirmativeButtonText, negativeButtonText, onAffirmative, onNegative) {
+    return {
+        type: ActionTypes.SET_CONFIRMATION_DIALOG,
+        value: { isOpen, title, text, affirmativeButtonText, negativeButtonText, onAffirmative, onNegative }
     }
 }
 
@@ -1148,9 +1160,9 @@ export function sendPasswordResetEmailAsync() {
         var email = getState().userEmail;
 
         getAuth().sendPasswordResetEmail(email).then( () => {
-            dispatch(postSnackbarMessage("Password reset email sent.", true, 'affirmative-notification'));
+            postGeneralSnackbar(dispatch, getState(), 'information', 'Password reset email sent', 4000, '');
         }).catch(error => {
-            dispatch(postSnackbarMessage("An error occured: " + error.message, false, 'error'));
+            postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
         })
     }
 }
@@ -1159,7 +1171,7 @@ export function registerNewUserAsync(email, password, displayName) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
 
         if (displayName === "") {
-            dispatch(postSnackbarMessage("Please enter a display name", true, 'negative-notification'));
+            postGeneralSnackbar(dispatch, getState(), 'information', 'Please enter a Display Name', 4000, '');
         }
 
         else {
@@ -1184,7 +1196,7 @@ export function registerNewUserAsync(email, password, displayName) {
 
 
             }).catch(error => {
-                handleAuthError(dispatch, error);
+                handleAuthError(dispatch, getState(), error);
                 dispatch(setIsLoggingInFlag(false));
 
             })
@@ -1216,7 +1228,7 @@ export function acceptProjectInviteAsync(projectId) {
 
         }).catch(error => {
             var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`; 
-            dispatch(postSnackbarMessage(message, true, 'infomation' ));
+            postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
             removeUpdatingInviteId(dispatch, getState, projectId);
         })
     }
@@ -1230,7 +1242,7 @@ export function denyProjectInviteAsync(projectId) {
         var denyProjectInvite = getFunctions().httpsCallable('denyProjectInvite');
         denyProjectInvite({projectId: projectId}).then( result => {
             if (result.data.status === 'error') {
-                dispatch(postSnackbarMessage(result.data.message, false, 'error'));
+                postGeneralSnackbar(dispatch, getState(), 'error', result.data.message, 0, 'Dismiss');
                 removeUpdatingInviteId(dispatch, getState, projectId);
             }
 
@@ -1245,7 +1257,7 @@ export function denyProjectInviteAsync(projectId) {
             }
         }).catch(error => {
             var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`; 
-            dispatch(postSnackbarMessage(message, true, 'infomation'));
+            postGeneralSnackbar(dispatch, getState(), 'error', message, 7000, '');
             removeUpdatingInviteId(dispatch, getState, projectId);
         })
     }
@@ -1429,43 +1441,55 @@ export function unsubscribeFromRemoteProjectAsync(projectId) {
     }
 }
 
-export function migrateProjectBackToLocalAsync(projectId, projectName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        // Extract project from State before you unsubscribe from Database.
-        var project = extractProject(getState, projectId);
+export function migrateProjectBackToLocalAsync(projectId, preCondition) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let confirmationText = 'This will remove all other users from the project, and make it available only to yourself, are you sure you want to continue?';
+        let dialogResult = await postConfirmationDialog(dispatch, getState(), confirmationText, 'Make project Personal', 'Continue', 'Cancel');
+        if (dialogResult.result === 'affirmative') {
+            // Extract project from State before you unsubscribe from Database.
+            var project = extractProject(getState, projectId);
 
-        dispatch(setIsShareMenuWaiting(true));
-        dispatch(setShareMenuMessage("Migrating project."))
-        dispatch(setShowCompletedTasksAsync(false));
-        dispatch(selectProject(-1));
+            dispatch(setIsShareMenuWaiting(true));
+            dispatch(setShareMenuMessage("Migrating project."))
+            dispatch(setShowCompletedTasksAsync(false));
+            dispatch(selectProject(-1));
 
-        var kickAllUsersFromProject = getFunctions().httpsCallable('kickAllUsersFromProject');
-        kickAllUsersFromProject({projectId: projectId}).then(result => {
-            if (result.data.status === 'complete') {
-                dispatch(unsubscribeFromDatabaseAsync());
+            try {
+                let kickAllUsersFromProject = getFunctions().httpsCallable('kickAllUsersFromProject');
 
-                moveProjectToLocalLocationAsync(getState, getFirestore, projectId, project).then( () => {
-                    dispatch(subscribeToDatabaseAsync());
+                let result = await kickAllUsersFromProject({ projectId: projectId });
+                if (result.data.status === 'complete') {
+                    dispatch(unsubscribeFromDatabaseAsync());
+
+                    try {
+                        await moveProjectToLocalLocationAsync(getState, getFirestore, projectId, project)
+                        dispatch(subscribeToDatabaseAsync());
+                        dispatch(setIsShareMenuWaiting(false));
+                        dispatch(setShareMenuMessage(""));
+                    }
+
+                    catch (migrationError) {
+                        let message = 'An error occured whilst migrating project';
+                        postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
+                        dispatch(setIsShareMenuWaiting(false));
+                        dispatch(setShareMenuMessage(""));
+                    }
+                }
+
+                if (result.data.status === 'error') {
+                    postGeneralSnackbar(dispatch, getState(), 'error', result.data.message, 0, 'Dismiss');
                     dispatch(setIsShareMenuWaiting(false));
                     dispatch(setShareMenuMessage(""));
-                }).catch(error => {
-                    dispatch(postSnackbarMessage(error.message, false, 'error'));
-                    dispatch(setIsShareMenuWaiting(false));
-                    dispatch(setShareMenuMessage(""));
-                })
+                }
             }
 
-            if (result.data.status === 'error') {
-                dispatch(postSnackbarMessage(result.data.message, false, 'error'));
+            catch (error) {
+                var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`;
+                postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
                 dispatch(setIsShareMenuWaiting(false));
                 dispatch(setShareMenuMessage(""));
             }
-        }).catch(error => {
-            var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`;
-            dispatch(postSnackbarMessage(message, false, 'infomation'));
-            dispatch(setIsShareMenuWaiting(false));
-            dispatch(setShareMenuMessage(""));
-        })
+        }
     }
 }
 
@@ -1556,8 +1580,14 @@ function moveProjectToLocalLocationAsync(getState, getFirestore, projectId, curr
     })  
 }
 
-export function inviteUserToProjectAsync(projectName, targetEmail, sourceEmail, sourceDisplayName, projectId, role) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+export function inviteUserToProjectAsync(targetEmail) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let projectId = getState().selectedProjectId;
+        let projectName = getState().projects.find( item => { return item.uid === projectId }).projectName;
+        let sourceDisplayName = getState().displayName;
+        let sourceEmail = getState().userEmail;
+        let role = 'member';
+
         dispatch(setIsShareMenuWaiting(true));
         dispatch(setShareMenuMessage('Searching for User...'));
 
@@ -1567,32 +1597,35 @@ export function inviteUserToProjectAsync(projectName, targetEmail, sourceEmail, 
         }, 5000)
 
         var getRemoteUserData = getFunctions().httpsCallable('getRemoteUserData');
-        getRemoteUserData({ targetEmail: targetEmail }).then(result => {
-            if (result.data.status === 'user found') {
-                // User Found.
-                var userData = result.data.userData;
 
-                var inviteData = {
-                    projectName: projectName,
-                    sourceEmail: sourceEmail,
-                    sourceDisplayName: sourceDisplayName,
-                    targetDisplayName: userData.displayName,
-                    targetEmail: userData.email,
-                    projectId: projectId,
-                    targetUserId: userData.userId,
-                    sourceUserId: getUserUid(),
-                    role: role,
-                }
+        try {
+            let result = await getRemoteUserData({ targetEmail: targetEmail })
+                if (result.data.status === 'user found') {
+                    // User Found.
+                    var userData = result.data.userData;
+    
+                    var inviteData = {
+                        projectName: projectName,
+                        sourceEmail: sourceEmail,
+                        sourceDisplayName: sourceDisplayName,
+                        targetDisplayName: userData.displayName,
+                        targetEmail: userData.email,
+                        projectId: projectId,
+                        targetUserId: userData.userId,
+                        sourceUserId: getUserUid(),
+                        role: role,
+                    }
+    
+                    // If the project isn't Remote already it needs to be Moved. Promise will resolve Imediately if no migration
+                    // is required, otherwise it will resolve when migration is complete.
+                    await maybeMigrateProjectAsync(dispatch, getFirestore, getState, projectId);
 
-                // If the project isn't Remote already it needs to be Moved. Promise will resolve Imediately if no migration
-                // is required, otherwise it will resolve when migration is complete.
-                maybeMigrateProjectAsync(dispatch, getFirestore, getState, projectId).then(() => {
                     dispatch(setShareMenuMessage('Sending invite.'));
 
                     var sendProjectInvite = getFunctions().httpsCallable('sendProjectInvite');
                     sendProjectInvite(inviteData).then(result => {
                         if (result.data.status === 'complete') {
-                            dispatch(postSnackbarMessage("Invite sent.", true, 'affirmative-notification'));
+                            postGeneralSnackbar(dispatch, getState(), 'information', "Invite sent", 4000, '');
                             dispatch(setIsShareMenuWaiting(false));
                             dispatch(setShareMenuMessage(""));
                             dispatch(setShareMenuSubMessage(""));
@@ -1601,65 +1634,122 @@ export function inviteUserToProjectAsync(projectName, targetEmail, sourceEmail, 
                         }
 
                         else {
-                            dispatch(postSnackbarMessage(result.data.error, false, 'error'));
+                            postGeneralSnackbar(dispatch, getState(), 'error', result.data.error, 4000, '');
                             dispatch(setIsShareMenuWaiting(false));
                             dispatch(setShareMenuMessage(""));
                             dispatch(setShareMenuSubMessage(""));
                             clearTimeout(slowMessageTimer);
                         }
                     })
-                })
-            }
-
-            else {
-                // User not Found.
-                dispatch(postSnackbarMessage('User not Found.', true, 'negative-notification'));
-                dispatch(setIsShareMenuWaiting(false));
-                dispatch(setShareMenuMessage(""));
-                dispatch(setShareMenuSubMessage(""));
-                clearTimeout(slowMessageTimer);
-            }
-        }).catch(error => {
+                }
+    
+                else {
+                    // User not Found.
+                    postGeneralSnackbar(dispatch, getState(), 'information', 'User not found', 4000, '');
+                    dispatch(setIsShareMenuWaiting(false));
+                    dispatch(setShareMenuMessage(""));
+                    dispatch(setShareMenuSubMessage(""));
+                    clearTimeout(slowMessageTimer);
+                }
+        }
+    
+        catch (error) {
             dispatch(setIsShareMenuWaiting(false));
             dispatch(setShareMenuMessage(''));
+            dispatch(setShareMenuSubMessage(''));
             var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`;
-            dispatch(postSnackbarMessage(message, false, 'infomation'));
-            dispatch(setShareMenuMessage(""));
-            dispatch(setShareMenuSubMessage(""));
+            postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
             clearTimeout(slowMessageTimer);
-        })
+        }
 
     }
 }
 
 export function updateMemberRoleAsync(userId, projectId, newRole) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        if (userId === getUserUid()) {
+            let message = 'If you demote yourself, you will need to be promoted by another owner. Are you sure you want to continue?'
+            let dialogResult = await postConfirmationDialog(dispatch, getState(), message, 'Demote yourself', 'Continue', 'Cancel' );
+            if (dialogResult.result === 'negative') {
+                return;
+            }
+        }
+
         addUpdatingUserId(dispatch, getState, userId, projectId);
 
-        var memberRef = getFirestore().collection(REMOTES).doc(projectId).collection(MEMBERS).doc(userId);
-        memberRef.update({ role: newRole }).then( () => {
+        try {
+            let memberRef = getFirestore().collection(REMOTES).doc(projectId).collection(MEMBERS).doc(userId);
+            await memberRef.update({ role: newRole })
             removeUpdatingUserId(dispatch, getState, userId, projectId);
-        }).catch(error => {
+        }
+
+        catch(error) {
             handleFirebaseUpdateError(error, getState(), dispatch);
             removeUpdatingUserId(dispatch, getState, userId, projectId);
-        })
+        }
+    }
+}
+
+export function leaveRemoteProjectAsync(projectId, userId) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let dialogResult = await postConfirmationDialog(
+            dispatch,
+            getState(),
+            'Are you sure you want to leave this project?',
+            'Leave project',
+            'Leave',
+            'Cancel'
+             )
+        
+        if (dialogResult.result === 'affirmative') {
+            try {
+                var kickUserFromProject = getFunctions().httpsCallable('kickUserFromProject');
+                await kickUserFromProject({ userId: userId, projectId: projectId })
+
+                dispatch(selectProject(-1));
+                dispatch(setIsShareMenuOpen(false));
+                dispatch(setIsAppDrawerOpen(true));
+
+                postGeneralSnackbar(dispatch, getState(), 'information', 'Left Project', 4000, '');
+
+            }
+
+            catch (error) {
+                var message = "Something went wrong when leaving project: " + error.message;
+                postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
+            }
+        }
     }
 }
 
 
-
 export function kickUserFromProjectAsync(projectId, userId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        addUpdatingUserId(dispatch, getState, userId, projectId);
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let dialogResult = await postConfirmationDialog(
+            dispatch,
+            getState(),
+            'Are you sure you want to kick this user from the project?',
+            'Kick user',
+            'Kick User',
+            'Cancel'
+             )
+        
+        if (dialogResult.result === 'affirmative') {
+            addUpdatingUserId(dispatch, getState, userId, projectId);
 
-        var kickUserFromProject = getFunctions().httpsCallable('kickUserFromProject');
-        kickUserFromProject({userId: userId, projectId: projectId}).then( result => {
-            removeUpdatingUserId(dispatch, getState, userId, projectId);
-        }).catch(error => {
-            var message = "Something went wrong when kicking a user: " + error.message;
-            dispatch(postSnackbarMessage(message, false, 'error'));
-            removeUpdatingUserId(dispatch, getState, userId, projectId);
-        })
+            try {
+                var kickUserFromProject = getFunctions().httpsCallable('kickUserFromProject');
+                await kickUserFromProject({ userId: userId, projectId: projectId })
+                removeUpdatingUserId(dispatch, getState, userId, projectId);
+                postGeneralSnackbar(dispatch, getState(), 'information', 'User kicked', 4000, '');
+            }
+
+            catch (error) {
+                var message = "Something went wrong when kicking a user: " + error.message;
+                postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
+                removeUpdatingUserId(dispatch, getState, userId, projectId);
+            }
+        }
     }
 }
 
@@ -1684,7 +1774,7 @@ function maybeMigrateProjectAsync(dispatch, getFirestore, getState, projectId) {
                 dispatch(selectProject(projectId));
                 resolve();
             }).catch(error => {
-                dispatch(postSnackbarMessage(error.message, false, 'error'));
+                postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
                 
                 reject();
             })
@@ -1792,7 +1882,6 @@ export function attachAuthListenerAsync() {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         getAuth().onAuthStateChanged(user => {
             if (user) {
-
                 if (newUser !== null) {
                     // A new user has just registered.
                     clearFirstTimeBootFlag(dispatch, getState);
@@ -1812,7 +1901,7 @@ export function attachAuthListenerAsync() {
                     }).catch(error => {
                         var message = `Critical error while setting directory listing, please contact the developer. Error : ${error.code}
                          ${error.message}`;
-                        dispatch(postSnackbarMessage(message, false, 'error'));
+                         postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
                     });
                 }
 
@@ -1923,7 +2012,7 @@ export function logOutUserAsync() {
 
         }).catch(error => {
             let message = handleAuthError(error);
-            dispatch(postSnackbarMessage(message, false, 'error'));
+            postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
 
         })
     }
@@ -1934,20 +2023,17 @@ export function logInUserAsync(email,password) {
         dispatch(setIsLoggingInFlag(true));
         dispatch(setAuthStatusMessage("Logging in"));
 
-        console.log(email);
-        console.log(password);
-
         var parsedEmail = email.toLowerCase().trim();
 
         // Set Persistence.
         getAuth().setPersistence('local').then(() => {
             getAuth().signInWithEmailAndPassword(parsedEmail, password).catch(error => {
-                handleAuthError(dispatch, error);
+                handleAuthError(dispatch, getState(), error);
                 dispatch(setIsLoggingInFlag(false));
                 dispatch(setAuthStatusMessage("Logged out"));
             })
         }).catch(error => {
-            handleAuthError(dispatch, error);
+            handleAuthError(dispatch, getState(), error);
             dispatch(setIsLoggingInFlag(false));
             dispatch(setAuthStatusMessage("Logged Out"));
         })
@@ -2320,8 +2406,29 @@ export function removeProjectAsync(projectId) {
     }
 }
 
-export function removeRemoteProjectAsync(projectId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+export function removeRemoteProjectAsync(projectId, preCondition) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        if (preCondition === false) {
+            let text = 'Before you delete the project you must promote another member to owner status';
+            let title = 'Hang on!';
+
+            postInformationDialog(dispatch, getState(), text, title);
+
+            return;
+        }
+
+        // Post Confirmation Dialog.
+        let title = "Delete Project";
+        let text = "Project will be deleted forever. Are you really sure you want to continue?"
+        let affirmativeButtonText = 'Delete Project';
+        let negativeButtonText = 'Cancel'
+        
+        let dialogResult = await postConfirmationDialog(dispatch, getState(), text, title, affirmativeButtonText, negativeButtonText);
+
+        if (dialogResult.result === 'negative') {
+            return;
+        }
+
         if (projectId !== -1 && isProjectRemote(getState, projectId)) {
             dispatch(setIsShareMenuWaiting(true));
             dispatch(setShareMenuMessage("Deleting Project"));
@@ -2329,29 +2436,33 @@ export function removeRemoteProjectAsync(projectId) {
             dispatch(selectProject(-1));
 
             var removeRemoteProject = getFunctions().httpsCallable('removeRemoteProject');
-            removeRemoteProject({projectId: projectId}).then(result => {
-                if (result.data.status === 'complete') {
-                    dispatch(setIsShareMenuOpen(false));
-                    dispatch(setIsShareMenuWaiting(false));
-                    dispatch(setShareMenuMessage(""));
-                }
+            try {
+                let result = await removeRemoteProject({projectId: projectId});
+                    if (result.data.status === 'complete') {
+                        dispatch(setIsShareMenuOpen(false));
+                        dispatch(setIsShareMenuWaiting(false));
+                        dispatch(setShareMenuMessage(""));
+                    }
+    
+                    if (result.data.status === 'error') {
+                        postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + result.data.message, 0, 'Dismiss');
+                        dispatch(setIsShareMenuWaiting(false));
+                        dispatch(setShareMenuMessage(""));
+                    }                    
+            }
 
-                if (result.data.status === 'error') {
-                    dispatch(postSnackbarMessage(result.data.message, false, 'error'));
-                    dispatch(setIsShareMenuWaiting(false));
-                    dispatch(setShareMenuMessage(""));
-                }
-            }).catch(error => {
-                var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`; 
-                dispatch(postSnackbarMessage(message, true, 'infomation'));
+            catch(error) {
+                var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`;
+                postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + message, 0, 'Dismiss');
                 dispatch(setIsShareMenuWaiting(false));
                 dispatch(setShareMenuMessage(""));
-            }) 
+            }
+            
         }
 
         else {
             var message = "No project selected or project is not a shared project."
-            dispatch(postSnackbarMessage(message, true, 'infomation'));
+            postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 4000, '');
         }
     }
 }
@@ -3185,7 +3296,7 @@ function handleFirebaseSnapshotError(error, state, dispatch) {
     switch (error.code) {
         case "permission-denied":
             if (state.isLoggedIn) {
-                dispatch(postSnackbarMessage(error.message, false, 'error'))
+                postGeneralSnackbar(dispatch, state, 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
             }
             
             // No handling required if logged out. Expected behaviour.
@@ -3199,55 +3310,51 @@ function handleFirebaseUpdateError(error, state, dispatch) {
     switch (error.code) {
         case "permission-denied":
             if (state.isLoggedIn) {
-                dispatch(postSnackbarMessage(`${error.code} : ${error.message}`, false, 'error'));
+                postGeneralSnackbar(dispatch, state, 'error', `${error.code} : ${error.message}`, 0, 'Dismiss');
             }
 
             else {
                 let message = "You must log in first.";
-                dispatch(postSnackbarMessage(message, true, 'infomation'));
+                postGeneralSnackbar(dispatch, state, 'information', 'You must log in first', 4000, '');
             }
 
         default:
             throw error;
     }
-    
 }
 
-
-function handleAuthError(dispatch, error) {
-    console.warn(" You haven't implemented clean handling of Auth errors yet.") 
-    console.warn(error.code);
+function handleAuthError(dispatch, state, error) {
     switch (error.code) {
         case "auth/wrong-password":
-            dispatch(postSnackbarMessage("Incorrect password", true, 'negative-notification'))
+            postGeneralSnackbar(dispatch, state, 'information', 'Incorrect password', 4000, '')
             break;
 
         case "auth/no-user-found":
-            dispatch(postSnackbarMessage("No user matching that email was found", true, 'negative-notification'));
+        postGeneralSnackbar(dispatch, state, 'information', 'No user matching that email was found', 4000, '')
             break;
 
         case "auth/invalid-email":
-            dispatch(postSnackbarMessage("The email you have entered is invalid", true, 'negative-notification'));
+            postGeneralSnackbar(dispatch, state, 'information', 'Invalid email', 4000, '')
             break;
 
         case "auth/network-request-failed":
-            dispatch(postSnackbarMessage("Cannot reach the authentication servers, are you sure you have an internet connection?", true, 'negative-notification'));
+            postGeneralSnackbar(dispatch, state, 'information', 'Cannot reach the Authentication servers', 4000, '')
             break;
 
         case "auth/email-already-in-use":
-            dispatch(postSnackbarMessage("A user with that email is already registered", true, 'negative-notification'));
+            postGeneralSnackbar(dispatch, state, 'information', 'Email address already in use', 4000, '')
             break;
 
         case "auth/weak-password":
-            dispatch(postSnackbarMessage("Password to weak, must be longer than 6 characters", true, 'negative-notification'));
+        postGeneralSnackbar(dispatch, state, 'information', 'Password to short', 4000, '')
             break;
         
         case "auth/user-disabled":
-            dispatch(postSnackbarMessage("Sorry, your account has been disabled by the developer.", true, 'negative-notification'));
+        postGeneralSnackbar(dispatch, state, 'information', 'Password to short. Must be 6 characters or more', 4000, '')
             break;
         
         default:
-            dispatch(postSnackbarMessage(`${error.code} : ${error.message}`, false, 'error'));
+            postGeneralSnackbar(dispatch, state, 'error', `${error.code} : ${error.message}`, 0, 'Dismiss')
     }
 }
 
@@ -3600,8 +3707,8 @@ function addProjectLayoutMovesToBatch(batch, sourceProjectId, targetProjectId, t
                 state.textInputDialog.label,
                 state.textInputDialog.text,
                 state.textInputDialog.title,
-                () => { },
-                () => { },
+                () => {},
+                () => {},
             ))
 
             resolve({ result: 'okay', value: newValue})
@@ -3611,8 +3718,109 @@ function addProjectLayoutMovesToBatch(batch, sourceProjectId, targetProjectId, t
     })
 }
 
+function postInformationDialog(dispatch, state, text, title) {
+    return new Promise( (resolve, reject) => {
+        let onOkay = (newValue) => {
+            dispatch(setInformationDialog(false,
+                state.informationDialog.text,
+                state.informationDialog.title,
+                () => {},
+            ))
+
+            resolve();
+        }
+
+        dispatch(setInformationDialog(true, text, title, onOkay));
+    })
+}
+
+function postConfirmationDialog(dispatch, state, text, title, affirmativeButtonText, negativeButtonText) {
+    return new Promise( (resolve, reject) => {
+        let onAffirmative = () => {
+            dispatch(setConfirmationDialog(
+                false,
+                state.confirmationDialog.title,
+                state.confirmationDialog.text,
+                state.confirmationDialog.affirmativeButtonText,
+                state.confirmationDialog.negativeButtonText,
+                () => {},
+                () => {}
+            ))
+
+            resolve({ result: 'affirmative' });
+        }
+
+        let onNegative = () => {
+            dispatch(setConfirmationDialog(
+                false,
+                state.confirmationDialog.title,
+                state.confirmationDialog.text,
+                state.confirmationDialog.affirmativeButtonText,
+                state.confirmationDialog.negativeButtonText,
+                () => {},
+                () => {}
+            ))
+
+            resolve({ result: 'negative' })
+        }
+
+        // Post Dialog.
+        dispatch(setConfirmationDialog(
+            true,
+            title,
+            text,
+            affirmativeButtonText,
+            negativeButtonText,
+            onAffirmative,
+            onNegative,
+        ))
+    })
+}
+
+function postGeneralSnackbar(dispatch, state, type, text, selfDismissTime, actionButtonText) {
+    return new Promise((resolve, reject) => {
+        let onAction = () => {
+            dispatch(setGeneralSnackbar(
+                false,
+                state.generalSnackbar.type,
+                state.generalSnackbar.message,
+                0,
+                { actionButtonText: actionButtonText, onAction: () => {} })
+            )
+
+            resolve();
+        }
+
+        // Post Snackbar.
+        dispatch(setGeneralSnackbar(
+            true,
+            type,
+            text,
+            selfDismissTime,
+            {
+                actionButtonText: actionButtonText,
+                onAction: onAction,
+            }
+        ))
+
+        if (selfDismissTime !== 0) {
+            wait(selfDismissTime).then(() => {
+                dispatch(setGeneralSnackbar(
+                    false,
+                    state.generalSnackbar.type,
+                    state.generalSnackbar.message,
+                    0,
+                    { actionButtonText: actionButtonText, onAction: () => {} })
+                )
+
+                resolve();
+            })
+        }
+    })
+}
+
 function wait(ms) {
     return new Promise( (resolve, reject) => {
-        setTimeout(() => { resolve() }, ms);
+        setTimeout( () => { resolve() }, ms);
     })
 }

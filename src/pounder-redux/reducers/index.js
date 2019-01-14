@@ -529,13 +529,11 @@ export function appReducer(state, action) {
             }
         }
 
-        case ActionTypes.POST_SNACKBAR_MESSAGE: {
+        case ActionTypes.SET_GENERAL_SNACKBAR: {
             return {
                 ...state,
-                isSnackbarOpen: true,
-                snackbarMessage: action.message,
-                isSnackbarSelfDismissing: action.isSelfDismissing,
-                snackbarType: action.snackbarType
+                generalSnackbar: action.value,
+                isASnackbarOpen: action.value.isOpen,
             }
         }
 
@@ -709,6 +707,18 @@ export function appReducer(state, action) {
             return {
                 ...state,
                 openChecklistSettingsId: action.value,
+            }
+
+        case ActionTypes.SET_INFORMATION_DIALOG:
+            return {
+                ...state,
+                informationDialog: action.value,
+            }
+        
+        case ActionTypes.SET_CONFIRMATION_DIALOG:
+            return {
+                ...state,
+                confirmationDialog: action.value,
             }
 
         default:

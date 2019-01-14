@@ -84,10 +84,6 @@ var initialState = {
     isLoggedIn: false,
     userEmail: "",
     displayName: "",
-    isSnackbarOpen: false,
-    snackbarMessage: "",
-    snackbarType: "infomation",
-    isSnackbarSelfDismissing: false,
     isUpdateSnackbarOpen: false,
     isAppDrawerOpen: true,
     isShareMenuOpen: false,
@@ -98,7 +94,26 @@ var initialState = {
     updatingInviteIds: [],
     openTaskOptionsId: -1,
     showOnlySelfTasks: false,
+    generalSnackbar: {
+        isOpen: false,
+        type: 'information',
+        message: '',
+        selfDismissTime: 0,
+        actionOptions: {
+            actionButtonText: 'Okay', onAction: () => {}
+        }
+    },
     textInputDialog: { isOpen: false, text: "", label: "", title: "", onCancel: () => {}, onOkay: () => {} },
+    informationDialog: { isOpen: false, text: "", title: "", onOkay: () => {} },
+    confirmationDialog: {
+        isOpen: false,
+        text: "",
+        title: "",
+        affirmativeButtonText: "Okay",
+        negativeButtonText: "Cancel",
+        onAffirmative: () => {},
+        onNegative: () => {},
+    },
     isInRegisterMode: false,
     showCompletedTasks: false,
     isProjectMenuOpen: false,
@@ -111,6 +126,8 @@ var initialState = {
     openTaskInspectorEntity: null,
     selectedProjectLayoutType: 'global',
     openChecklistSettingsId: -1,
+    isASnackbarOpen: false,
+    
 }
 
 export var appStore = createStore(
