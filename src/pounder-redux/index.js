@@ -3,7 +3,7 @@ import { appReducer } from './reducers/index';
 import Logger from 'redux-logger';
 import ReduxThunk from 'redux-thunk';
 import { setupFirebase, getFirestore, getAuth, getFunctions, AccountConfigFallback } from '../pounder-firebase';
-import { ProjectLayoutStore, CssConfigStore } from '../pounder-stores';
+import { ProjectLayoutStore, CssConfigStore, MuiThemeFactory, ThemeFactory } from '../pounder-stores';
 import { initializeDexie, getDexie, generalConfigFallback } from '../pounder-dexie';
 
 export var includeMetadataChanges = { includeMetadataChanges: false }
@@ -48,7 +48,8 @@ var initialState = {
     projectLayoutsMap: {},
     localProjectLayouts: [],
     remoteProjectLayouts: [],
-    selectedTask: {taskListWidgetId: -1, taskId: -1, isInputOpen: false},
+    selectedTask: { taskListWidgetId: -1, taskId: -1, isInputOpen: false },
+    muiThemes: [ muiThemeFactory('default', 'Default', ThemeFactory()) ], // Ensure a Default Theme always exists.
     selectedProjectId: -1,
     isSelectedProjectRemote: false,
     isATaskMoving: false,
@@ -126,8 +127,9 @@ var initialState = {
     openTaskInspectorEntity: null,
     selectedProjectLayoutType: 'global',
     openChecklistSettingsId: -1,
+    openChecklistSettingsEntity: null,
     isASnackbarOpen: false,
-    
+    selectedMuiThemeId: 'default',
 }
 
 export var appStore = createStore(

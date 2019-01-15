@@ -188,3 +188,71 @@ export function getProjectLayoutType(projectId, members, userId) {
   }
 }
 
+export function TaskAlphabeticalSorter(a,b) {
+  var textA = a.taskName.toUpperCase();
+  var textB = b.taskName.toUpperCase();
+
+  return (textA < textB) ? -1 : (textA > textB) ? 1 : 0;
+}
+
+export function TaskCompletedSorter(a, b) {
+  if (a.isComplete > b.isComplete) {
+      return 1
+  }
+
+  if (a.isComplete < b.isComplete) {
+      return -1
+  }
+
+  return TaskDateAddedSorter(a,b);
+}
+
+export function TaskPrioritySorter(a,b) {
+  if (a.isHighPriority > b.isHighPriority) {
+      return -1;
+  }
+
+  if (a.isHighPriority < b.isHighPriority) {
+      return 1;
+  }
+  
+  return TaskDateAddedSorter(a,b);
+}
+
+export function TaskDueDateSorter(a, b) {
+  var dueDateA = a.dueDate.length === 0 ? Infinity : new Date(a.dueDate);
+  var dueDateB = b.dueDate.length === 0 ? Infinity : new Date(b.dueDate);
+  
+  if (dueDateA > dueDateB) {
+      return 1;
+  }
+
+  if (dueDateA < dueDateB) {
+      return -1
+  }
+
+  return TaskDateAddedSorter(a,b);
+}
+
+export function TaskDateAddedSorter(a, b) {
+  var dateAddedA = new Date(a.dateAdded);
+  var dateAddedB = new Date(b.dateAdded);
+  return dateAddedA - dateAddedB;
+}
+
+export function TaskAssigneeSorter(a,b) {
+  var aName = (a.assignedTo === undefined || a.assignedTo === -1 ? "aaa" : a.assignedTo).toUpperCase();
+  var bName = (b.assignedTo === undefined || b.assignedTo === -1 ? "aaa" : b.assignedTo).toUpperCase();
+
+  if (aName > bName) {
+      return -1;
+  }
+
+  if (aName < bName) {
+      return 1;
+  }
+
+  return TaskDateAddedSorter(a,b);
+  
+}
+

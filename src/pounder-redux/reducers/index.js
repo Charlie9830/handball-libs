@@ -282,6 +282,7 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 taskLists: [...action.taskLists, ...state.remoteTaskLists],
                 localTaskLists: action.taskLists,
+                openChecklistSettingsEntity: updateOpenChecklistSettingsEntity(action.taskLists, state.openChecklistSettingsId)
             }
 
         case ActionTypes.RECEIVE_REMOTE_TASKLISTS:
@@ -290,6 +291,7 @@ export function appReducer(state, action) {
                 isAwatingFirebase: false,
                 taskLists: [...state.localTaskLists, ...action.taskLists],
                 remoteTaskLists: action.taskLists,
+                openChecklistSettingsEntity: updateOpenChecklistSettingsEntity(action.taskLists, state.openChecklistSettingsId)
             }
         
         case ActionTypes.START_PROJECTLAYOUTS_FETCH:
@@ -619,6 +621,20 @@ export function appReducer(state, action) {
             }
         }
 
+        case ActionTypes.RECEIVE_MUI_THEMES: {
+            return {
+                ...state,
+                muiThemes: action.value,
+            }
+        }
+
+        case ActionTypes.SELECT_MUI_THEME: {
+            return {
+                ...state,
+                selectedMuiThemeId: action.value,
+            }
+        }
+
         case ActionTypes.RECEIVE_REMOTE_PROJECT_IDS: {
             return {
                 ...state,
@@ -703,12 +719,6 @@ export function appReducer(state, action) {
                 selectedProjectLayout: getSelectedProjectLayout(state.selectedProjectId, state.members, state.projectLayoutsMap)
             }
 
-        case ActionTypes.SET_OPEN_CHECKLIST_SETTINGS_ID:
-            return {
-                ...state,
-                openChecklistSettingsId: action.value,
-            }
-
         case ActionTypes.SET_INFORMATION_DIALOG:
             return {
                 ...state,
@@ -719,6 +729,20 @@ export function appReducer(state, action) {
             return {
                 ...state,
                 confirmationDialog: action.value,
+            }
+        
+        case ActionTypes.OPEN_CHECKLIST_SETTINGS:
+            return {
+                ...state,
+                openChecklistSettingsId: action.taskListId,
+                openChecklistSettingsEntity: action.existingChecklistSettings,
+            }
+
+        case ActionTypes.CLOSE_CHECKLIST_SETTINGS:
+            return {
+                ...state,
+                openChecklistSettingsId: -1,
+                openChecklistSettingsEntity: null,
             }
 
         default:
@@ -918,5 +942,24 @@ function getSelectedProjectLayout(projectId, members, projectLayoutsMap) {
 
       else {
           return extractTask(tasks, taskId);
+      }
+  }
+
+  function updateOpenChecklistSettingsEntity(taskLists, taskListId) {
+      if (taskListId === -1) {
+          // Checklist Settings isn't open. No update requried;
+          return null;
+      }
+
+      else {
+          let taskList = taskLists.find(item => {
+              return item.uid === taskListId;
+          })
+
+          if (taskList) {
+              return taskList.settings.checklistSettings;
+          }
+
+          return null;
       }
   }

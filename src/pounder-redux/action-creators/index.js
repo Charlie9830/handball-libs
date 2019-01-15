@@ -1,11 +1,11 @@
 import * as ActionTypes from '../action-types/index';
 import FirestoreBatchPaginator from '../../firestore-batch-paginator';
 import { USERS, PROJECTS, PROJECTLAYOUTS, TASKS, TASKLISTS, ACCOUNT, ACCOUNT_DOC_ID,
-     REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY, TASKCOMMENTS, JOBS_QUEUE } from '../../pounder-firebase/paths';
+     REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY, TASKCOMMENTS, JOBS_QUEUE, MUI_THEMES } from '../../pounder-firebase/paths';
 import { setUserUid, getUserUid, TaskCommentQueryLimit } from '../../pounder-firebase';
 import { ProjectStore, ProjectLayoutStore, TaskListStore, TaskListSettingsStore, TaskStore, CssConfigStore, MemberStore,
 InviteStore, RemoteStore, TaskMetadataStore, DirectoryStore, ProjectFactory, ChecklistSettingsFactory, TaskCommentFactory,
-LayoutEntryFactory, JobFactory} from '../../pounder-stores';
+LayoutEntryFactory, JobFactory, MuiThemeFactory} from '../../pounder-stores';
 import * as JobTypes from '../../pounder-firebase/jobTypes';
 import Moment from 'moment';
 import { includeMetadataChanges } from '../index';
@@ -22,17 +22,17 @@ const DATE_FORMAT = 'dddd MMMM Do YYYY, h:mm a';
 var newUser = null;
 
 // Database Unsubscribers.
-var localProjectsUnsubscribe = null;
-var localProjectLayoutsUnsubscribe = null;
-var remoteProjectIdsUnsubscribe = null;
-var localTaskListsUnsubscribe = null;
-var accountConfigUnsubscribe = null;
-var invitesUnsubscribe = null;
+let localProjectsUnsubscribe = null;
+let localProjectLayoutsUnsubscribe = null;
+let remoteProjectIdsUnsubscribe = null;
+let localTaskListsUnsubscribe = null;
+let accountConfigUnsubscribe = null;
+let invitesUnsubscribe = null;
 
-var onlyCompletedLocalTasksUnsubscribe = null;
-var onlyIncompletedLocalTasksUnsubscribe = null;
+let onlyCompletedLocalTasksUnsubscribe = null;
+let onlyIncompletedLocalTasksUnsubscribe = null;
 
-var remoteProjectsUnsubscribes = {};
+let remoteProjectsUnsubscribes = {};
 
 // Standard Action Creators.
 export function setShowOnlySelfTasks(newValue) {
@@ -323,6 +323,20 @@ export function setFocusedTaskListId(id) {
     }
 }
 
+export function openChecklistSettings(taskListId, existingChecklistSettings) {
+    return {
+        type: ActionTypes.OPEN_CHECKLIST_SETTINGS,
+        taskListId: taskListId,
+        existingChecklistSettings: existingChecklistSettings
+    }
+}
+
+export function closeChecklistSettings() {
+    return {
+        type: ActionTypes.CLOSE_CHECKLIST_SETTINGS,
+    }
+}
+
 export function selectTask(taskListWidgetId, taskId, openMetadata) {
     return {
         type: ActionTypes.SELECT_TASK,
@@ -481,6 +495,13 @@ export function setTaskListsHavePendingWrites(value) {
     }
 }
 
+export function selectMuiTheme(id) {
+    return {
+        type: ActionTypes.SELECT_MUI_THEME,
+        value: id,
+    }
+}
+
 export function setTasksHavePendingWrites(value) {
     return {
         type: ActionTypes.SET_TASKS_HAVE_PENDING_WRITES,
@@ -621,6 +642,13 @@ export function setSelectedProjectLayoutType(layoutType) {
     return {
         type: ActionTypes.SET_SELECTED_PROJECT_LAYOUT_TYPE,
         value: layoutType,
+    }
+}
+
+export function receiveMuiThemes(themes) {
+    return {
+        type: ActionTypes.RECEIVE_MUI_THEMES,
+        value: themes,
     }
 }
 
@@ -1026,6 +1054,20 @@ export function postNewCommentAsync(taskId, value) {
         }).catch(error => {
             handleFirebaseUpdateError(error, getState(), dispatch);
         })
+    }
+}
+
+export function manuallyRenewChecklistAsync(taskListId) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let taskList = extractTaskList(taskListId, getState().taskLists);
+        if (taskList === undefined) {
+            return;
+        }
+
+        let projectId = taskList.project;
+        let isRemote = isProjectRemote(getState, projectId);
+
+        dispatch(renewChecklistAsync(taskList, isRemote, projectId, true));
     }
 }
 
@@ -1970,6 +2012,7 @@ export function subscribeToDatabaseAsync() {
 
         // Project Invites (Also attaches a Value listener for future changes).
         dispatch(getInvitesAsync());
+
     }
 }
 
@@ -2275,6 +2318,21 @@ export function updateTaskDueDateAsync(taskId, newMoment, oldDate) {
     }
 }
 
+export function updateChecklistSettingsAsync(taskListId, newValue) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let taskList = extractTaskList(taskListId, getState().taskLists);
+        if (taskList === undefined) {
+            return;
+        }
+
+        let existingSettings = { ...taskList.settings };
+        existingSettings.checklistSettings = newValue;
+        
+        dispatch(updateTaskListSettingsAsync(taskListId, existingSettings));
+        
+    }
+}
+
 export function updateTaskListSettingsAsync(taskListWidgetId, newValue) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         // Update Firestore.
@@ -2290,10 +2348,22 @@ export function updateTaskListSettingsAsync(taskListWidgetId, newValue) {
     }
 }
 
-
 export function removeTaskListAsync(taskListWidgetId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (taskListWidgetId !== -1) {
+            let dialogResult = await postConfirmationDialog(
+                dispatch,
+                getState(),
+                'Are you sure you want to delete this list?',
+                'Delete List',
+                'Delete List',
+                'Cancel'
+                )
+
+            if (dialogResult.result === 'negative') {
+                return;
+            }
+
             // Update Firestore.
             var selectedProjectId = getState().selectedProjectId;
             var isCurrentProjectRemote = isProjectRemote(getState, selectedProjectId);
@@ -2307,7 +2377,7 @@ export function removeTaskListAsync(taskListWidgetId) {
             if (isRemovingLastTaskList(getState, selectedProjectId)) {
                 // We are about to remove the last Task list. Queue up a request to delete any remaining Project Layouts.
                 var projectLayoutRef = getProjectLayoutRef(getFirestore, getState, selectedProjectId);
-                batch.update(projectLayoutRef.doc(selectedProjectId), {layouts: [] });
+                batch.update(projectLayoutRef.doc(selectedProjectId), { layouts: [] });
             }
 
             // Task list
@@ -2327,18 +2397,19 @@ export function removeTaskListAsync(taskListWidgetId) {
                     batch.delete(getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc(id));
                 })
             }
-            
-
-            batch.commit().then(() => {
-                // Carefull what you do here. Promises don't resolve if you are Offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
 
             dispatch(setFocusedTaskListId(-1));
 
             // Project updated metadata.
             updateProjectUpdatedTime(getState, getFirestore, selectedProjectId);
+            
+            try {
+                await batch.commit();
+            }
+
+            catch(error) {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            }
         }
 
     }
@@ -2660,22 +2731,28 @@ function deleteTaskAsync(getFirestore, getState, taskId) {
     })
 }
 
-export function updateTaskListWidgetHeaderAsync(taskListWidgetId, newName, oldName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setOpenTaskListWidgetHeaderId(-1));
-        dispatch(setTextInputDialog(false));
+export function updateTaskListNameAsync(taskListId, currentName) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let dialogResult = await postTextInputDialog(dispatch, getState(), 'Name', currentName, 'Rename List');
+        if (dialogResult.result === 'cancel') {
+            return;
+        }
 
-        if (newName !== oldName) {
-            var taskListRef = getTaskListRef(getFirestore, getState, taskListWidgetId);
+        let newName = dialogResult.value;
 
-            taskListRef.update({ taskListName: newName }).then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
+        if (newName !== currentName) {
+            var taskListRef = getTaskListRef(getFirestore, getState, taskListId);
 
             // Project updated metadata.
             updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+
+            try {
+                await taskListRef.update({ taskListName: newName });
+            }
+
+            catch(error) {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            }            
         }
     }
 }
@@ -3838,6 +3915,12 @@ function postGeneralSnackbar(dispatch, state, type, text, selfDismissTime, actio
                 resolve();
             })
         }
+    })
+}
+
+function extractTaskList(taskListId, taskLists) {
+    return taskLists.find( item => {
+        return item.uid === taskListId;
     })
 }
 

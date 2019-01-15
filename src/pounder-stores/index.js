@@ -1,3 +1,28 @@
+export function MuiThemeFactory(uid, name, theme) {
+    return {
+        uid,
+        name,
+        theme,
+    }
+}
+
+export function ThemeFactory() {
+    return {
+        type: 'dark',
+        palette: {
+            primaryColorId: 'blue',
+            secondaryColorId: 'orange',
+            custom: {
+                "today": '#1455c0',
+                "soon": '#FF9300',
+                "overdue": '#F00',
+                "later": '#22B30B',
+                "unreadItem": '#1455c0',
+            }
+        }
+    }
+}
+
 export class DatabaseStore {
     constructor(projects, projectLayouts, taskLists, tasks, accountConfig) {
         this.projects = projects;
