@@ -348,13 +348,7 @@ export function closeTask(taskListWidgetId, taskId) {
     }
 }
 
-export function startTaskMove(movingTaskId, sourceTaskListWidgetId) {
-    return {
-        type: ActionTypes.START_TASK_MOVE,
-        movingTaskId: movingTaskId,
-        sourceTaskListWidgetId: sourceTaskListWidgetId
-    }
-}
+
 
 export function startTaskMoveInDatabase() {
     return {
@@ -631,15 +625,16 @@ export function setSelectedProjectLayoutType(layoutType) {
 }
 
 // Private Actions.
-// Should only be dispatched by moveTaskAsync(), as moveTaskAsync() gets the movingTaskId from the State. Calling this from elsewhere
-// could create a race Condition.
-function setOpenTaskInspectorId(taskId) {
+function startTaskMove(movingTaskId, sourceTaskListWidgetId) {
     return {
-        type: ActionTypes.SET_OPEN_TASK_INSPECTOR_ID,
-        value: taskId,
+        type: ActionTypes.START_TASK_MOVE,
+        movingTaskId: movingTaskId,
+        sourceTaskListWidgetId: sourceTaskListWidgetId
     }
 }
 
+// Should only be dispatched by moveTaskAsync(), as moveTaskAsync() gets the movingTaskId from the State. Calling this from elsewhere
+// could create a race Condition.
 function endTaskMove(movingTaskId, destinationTaskListWidgetId) {
     return {
         type: ActionTypes.END_TASK_MOVE,
@@ -648,7 +643,21 @@ function endTaskMove(movingTaskId, destinationTaskListWidgetId) {
     }
 }
 
+function setOpenTaskInspectorId(taskId) {
+    return {
+        type: ActionTypes.SET_OPEN_TASK_INSPECTOR_ID,
+        value: taskId,
+    }
+}
+
 // Thunks
+export function startTaskMoveAsync(taskId, sourceTaskListId) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        postGeneralSnackbar(dispatch, getState(), 'information', 'Touch the desired list for the Task', 4000, '');
+        dispatch(startTaskMove(taskId, sourceTaskListId));
+    }   
+}
+
 export function moveTaskListToProjectAsync(sourceProjectId, targetProjectId, taskListWidgetId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (!isProjectRemote(getState, sourceProjectId) && !isProjectRemote(getState, targetProjectId) ) {
@@ -2673,30 +2682,38 @@ export function updateTaskListWidgetHeaderAsync(taskListWidgetId, newName, oldNa
 
 
 export function moveTaskAsync(destinationTaskListId, taskId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(startTaskMoveInDatabase());
+
+        if ( getState().sourceTaskListId === destinationTaskListId) {
+            // User wants to cancel Move.
+            dispatch(endTaskMove(movingTaskId, destinationTaskListId));
+            dispatch(setFocusedTaskListId(destinationTaskListId));
+        }
 
         // If Task was moved via Drag and Drop, taskId will have been passed in as parameter.
         var movingTaskId = taskId === undefined ? getState().movingTaskId : taskId;
         var taskRef = getTaskRef(getFirestore, getState, movingTaskId);
 
         // Can't get currentMetadata from the Task directly, so extract it here.
-        var currentMetadata = getState().tasks.find(task => {return task.uid === movingTaskId}).metadata;
-
-        taskRef.update({
-            taskList: destinationTaskListId,
-            metadata: getUpdatedMetadata(currentMetadata, {updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate()}),
-        }).then(() => {
-            /// Carefull what you do here, promises don't resolve if you are offline.
-        }).catch(error => {
-            handleFirebaseUpdateError(error, getState(), dispatch);
-        })
+        var currentMetadata = getState().tasks.find(task => { return task.uid === movingTaskId }).metadata;
 
         dispatch(endTaskMove(movingTaskId, destinationTaskListId));
         dispatch(setFocusedTaskListId(destinationTaskListId));
 
         // Project updated metadata.
         updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+
+        try {
+            await taskRef.update({
+                taskList: destinationTaskListId,
+                metadata: getUpdatedMetadata(currentMetadata, {updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate()}),
+            })
+        }
+        
+        catch(error) {
+            handleFirebaseUpdateError(error, getState(), dispatch);
+        }
     }
 }
 
