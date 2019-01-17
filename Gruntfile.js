@@ -1,5 +1,7 @@
 module.exports = function (grunt) {
   require("load-grunt-tasks")(grunt); // npm install --save-dev load-grunt-tasks
+  grunt.loadNpmTasks('grunt-contrib-copy');
+
 
   grunt.initConfig({
     "babel": {
@@ -21,10 +23,18 @@ module.exports = function (grunt) {
           "libs/pounder-stores/index.js": "src/pounder-stores/index.js",
           "libs/pounder-utilities/index.js": "src/pounder-utilities/index.js",
           "libs/firestore-batch-paginator/index.js": "src/firestore-batch-paginator/index.js",
+          "libs/pounder-themes/index.js": "src/pounder-themes/index.js",
         }
+      }
+    },
+    "copy": {
+      "themes": {
+        files: [
+          { expand: true, flatten: true, cwd: './', src: ['./src/pounder-themes/*.json'], dest: './libs/pounder-themes/', filter: 'isFile'},
+        ],
       }
     }
   });
 
-  grunt.registerTask("build", ["babel"]);
+  grunt.registerTask("build", ['copy', 'babel']);
 }

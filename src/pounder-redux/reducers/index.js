@@ -439,7 +439,8 @@ export function appReducer(state, action) {
                     ...state,
                     generalConfig: action.value,
                     isDexieConfigLoadComplete: true,
-                    projects: maybeReSortProjects(state, action.value) // Returns re sorted projects if generalConfig.sortProjectsBy has changed. 
+                    projects: maybeReSortProjects(state, action.value), // Returns re sorted projects if generalConfig.sortProjectsBy has changed.
+                    selectedMuiThemeId: action.value.selectedMuiThemeId !== undefined ? action.value.selectedMuiThemeId : state.selectedMuiThemeId, 
                 }
             }
         }
@@ -621,10 +622,11 @@ export function appReducer(state, action) {
             }
         }
 
-        case ActionTypes.RECEIVE_MUI_THEMES: {
+        case ActionTypes.RECEIVE_LOCAL_MUI_THEMES: {
             return {
                 ...state,
-                muiThemes: action.value,
+                localMuiThemes: action.value,
+                muiThemes: [...action.value]
             }
         }
 

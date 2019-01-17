@@ -256,3 +256,10 @@ export function TaskAssigneeSorter(a,b) {
   
 }
 
+const uuidv1 = require('uuid/v1');
+
+export function GetUid() {
+    return uuidv1();
+}
+
+

@@ -1,0 +1,25 @@
+{
+    "id": "warm",
+    "name": "Warm",
+    "isInbuilt": true,
+    "theme": {
+      "type": "light",
+      "palette": {
+        "primaryColorId": "orange",
+        "secondaryColorId": "deepPurple",
+        "backgroundColorId": "grey",
+        "custom": {
+          "today": "#1455c0",
+          "soon": "#FF9300",
+          "overdue": "#F00",
+          "later": "#22B30B",
+          "unreadItem": "#1455c0",
+          "highPriority": "orange"
+        }
+      },
+      "isDense": false,
+      "typography": {
+        "useNextVariants": true
+      }
+    }
+  }

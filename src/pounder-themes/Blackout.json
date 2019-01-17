@@ -1,0 +1,25 @@
+{
+  "id": "default",
+  "name": "Blackout",
+  "isInbuilt": true,
+  "theme": {
+    "type": "dark",
+    "palette": {
+      "primaryColorId": "grey",
+      "secondaryColorId": "orange",
+      "backgroundColorId": "grey",
+      "custom": {
+        "today": "#1455c0",
+        "soon": "#FF9300",
+        "overdue": "#F00",
+        "later": "#22B30B",
+        "unreadItem": "#1455c0",
+        "highPriority": "orange"
+      }
+    },
+    "isDense": false,
+    "typography": {
+      "useNextVariants": true
+    }
+  }
+}

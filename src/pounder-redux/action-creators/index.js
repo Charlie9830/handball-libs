@@ -13,7 +13,7 @@ import parseArgs from 'minimist';
 import stringArgv from 'string-argv';
 import Fuse from 'fuse.js';
 import { getDayPickerDate, getClearedDate, getDaysForwardDate, getWeeksForwardDate, getParsedDate, getNormalizedDate,
-isChecklistDueForRenew, isDayName, getDayNameDate, getProjectLayoutType} from '../../pounder-utilities';
+isChecklistDueForRenew, isDayName, getDayNameDate, getProjectLayoutType, GetUid} from '../../pounder-utilities';
 var loremIpsum = require('lorem-ipsum');
 
 const legalArgsRegEx = / -dd | -hp /i;
@@ -645,9 +645,9 @@ export function setSelectedProjectLayoutType(layoutType) {
     }
 }
 
-export function receiveMuiThemes(themes) {
+export function receiveLocalMuiThemes(themes) {
     return {
-        type: ActionTypes.RECEIVE_MUI_THEMES,
+        type: ActionTypes.RECEIVE_LOCAL_MUI_THEMES,
         value: themes,
     }
 }
@@ -679,6 +679,174 @@ function setOpenTaskInspectorId(taskId) {
 }
 
 // Thunks
+export function persistMuiThemeSelection() {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let generalConfig = {...getState().generalConfig};
+
+        generalConfig.selectedMuiThemeId = getState().selectedMuiThemeId;
+
+        dispatch(setGeneralConfigAsync(generalConfig));
+    }
+}
+
+export function updateMuiThemeAsync(id, newTheme) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let muiThemes = [...getState().muiThemes];
+        let muiTheme = muiThemes.find(item => {
+            return item.id === id;
+        })
+
+        if (muiTheme === undefined) {
+            return;
+        }
+
+        muiTheme.theme = newTheme;
+
+        try {
+            // Add to IndexedDB
+            await getDexie().muiThemes.update(id, { theme: newTheme });
+            
+            // Add to State
+            dispatch(receiveLocalMuiThemes(muiThemes));
+        }
+
+        catch(error) {
+            console.error(error);
+        }
+    }
+}
+
+export function renameMuiThemeAsync(id) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let muiThemes = [...getState().muiThemes]
+        let muiTheme = muiThemes.find(item => {
+            return item.id === id;
+        })
+
+        if (muiTheme === undefined) {
+            return;
+        }
+
+        if (muiTheme.isInbuilt) {
+            postGeneralSnackbar(dispatch, getState(), 'information', "You cannot rename a built in theme", 4000, '');
+            return;
+        }
+
+        let dialogResult = await postTextInputDialog(dispatch, getState(), 'Name', muiTheme.name, 'Rename theme');
+
+        if (dialogResult.result === 'cancel') {
+            return;
+        }
+
+        let newName = dialogResult.value;
+        muiTheme.name = newName;
+
+        try {
+            // Update DB
+            await getDexie().muiThemes.update(id, { name: newName });
+
+            // Update State.
+            dispatch(receiveLocalMuiThemes(muiThemes));
+        }
+        
+        catch(error) {
+            console.error(error);
+        }
+
+    }
+}
+
+export function removeMuiThemeAsync(id) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let muiThemes = [...getState().muiThemes]
+        let muiTheme = muiThemes.find(item => {
+            return item.id === id;
+        })
+
+        let muiThemeIndex = muiThemes.findIndex(item => {
+            return item.id === id;
+        })
+
+        if (muiTheme === undefined || muiTheme.isInbuilt === true) {
+            return;
+        }
+
+        let dialogResult = await postConfirmationDialog(
+            dispatch,
+            getState(),
+            'Are you sure you want to delete this theme?',
+            'Delete theme',
+            'Delete',
+            'Cancel'
+        );
+
+        if (dialogResult.result === 'negative') {
+            return;
+        }
+
+        dispatch(selectMuiTheme('default'));
+
+        muiThemes.splice(muiThemeIndex, 1);
+
+        try {
+            await getDexie().muiThemes.delete(id);
+            dispatch(receiveLocalMuiThemes(muiThemes));
+        }
+
+        catch(error) {
+            console.error(error);
+        }
+    }
+}
+
+export function createNewMuiThemeAsync() {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let dialogResult = await postTextInputDialog(dispatch, getState(), 'Name', '', 'Create new Theme');
+        if (dialogResult.result === 'cancel') {
+            return;
+        }
+
+        let themeName = dialogResult.value;
+        let muiThemes = [...getState().muiThemes]
+        let selectedMuiThemeId = getState().selectedMuiThemeId;
+        let selectedMuiThemeEntity = muiThemes.find(item => {
+            return item.id === selectedMuiThemeId;
+        })
+
+        let newTheme = {...selectedMuiThemeEntity};
+        newTheme.id = GetUid();
+        newTheme.name = themeName;
+        newTheme.isInbuilt = false;
+
+        // Add to IndexedDB
+        try {
+            await getDexie().muiThemes.add(newTheme)
+
+            // Add to State.
+            muiThemes.push(newTheme);
+            dispatch(receiveLocalMuiThemes(muiThemes));
+            dispatch(selectMuiTheme(newTheme.id));
+        }
+        
+        catch(error) {
+            console.error(error);
+        }
+    }
+}
+
+export function getLocalMuiThemes() {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        try {
+            let muiThemes = await getDexie().muiThemes.toArray();
+            dispatch(receiveLocalMuiThemes(muiThemes));
+        }
+
+        catch(error) {
+            console.error(error);
+        }
+        
+    }
+}
 export function startTaskMoveAsync(taskId, sourceTaskListId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         postGeneralSnackbar(dispatch, getState(), 'information', 'Touch the desired list for the Task', 4000, '');

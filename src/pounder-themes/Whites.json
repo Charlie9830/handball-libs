@@ -1,0 +1,25 @@
+{
+    "id": "whites",
+    "name": "Whites",
+    "isInbuilt": true,
+    "theme": {
+      "type": "light",
+      "palette": {
+        "primaryColorId": "blueGrey",
+        "secondaryColorId": "indigo",
+        "backgroundColorId": "blueGrey",
+        "custom": {
+          "today": "#1455c0",
+          "soon": "#FF9300",
+          "overdue": "#F00",
+          "later": "#22B30B",
+          "unreadItem": "#1455c0",
+          "highPriority": "orange"
+        }
+      },
+      "isDense": false,
+      "typography": {
+        "useNextVariants": true
+      }
+    }
+  }

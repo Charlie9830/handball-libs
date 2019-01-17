@@ -1,7 +1,8 @@
-export function MuiThemeFactory(uid, name, theme) {
+export function MuiThemeFactory(id, name, isInbuilt, theme) {
     return {
-        uid,
+        id,
         name,
+        isInbuilt,
         theme,
     }
 }
@@ -12,13 +13,19 @@ export function ThemeFactory() {
         palette: {
             primaryColorId: 'blue',
             secondaryColorId: 'orange',
+            backgroundColorId: 'grey',
             custom: {
                 "today": '#1455c0',
                 "soon": '#FF9300',
                 "overdue": '#F00',
                 "later": '#22B30B',
                 "unreadItem": '#1455c0',
-            }
+                "highPriority": 'orange'
+            },
+        },
+        isDense: false,
+        'typography': {
+            useNextVariants: true
         }
     }
 }
