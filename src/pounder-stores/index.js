@@ -1,4 +1,4 @@
-export function MuiThemeFactory(id, name, isInbuilt, theme) {
+export function ThemeFactory(id, name, isInbuilt, theme) {
     return {
         id,
         name,
@@ -7,21 +7,21 @@ export function MuiThemeFactory(id, name, isInbuilt, theme) {
     }
 }
 
-export function ThemeFactory() {
+export function MuiThemeFactory() {
     return {
         type: 'dark',
         palette: {
             primaryColor: {
-                id: 'blue',
-                shadeIndex: 5
+                id: 'indigo',
+                shadeIndex: 6
             },
             secondaryColor: {
                 id: 'orange',
                 shadeIndex: 5
             },
             backgroundColor: {
-                id: 'grey',
-                shadeIndex: 5,
+                id: 'black',
+                shadeIndex: 8,
             },
             custom: {
                 "today": '#1455c0',

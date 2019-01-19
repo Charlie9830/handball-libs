@@ -50,7 +50,7 @@ var initialState = {
     remoteProjectLayouts: [],
     selectedTask: { taskListWidgetId: -1, taskId: -1, isInputOpen: false },
     localMuiThemes: [],
-    muiThemes: [ MuiThemeFactory('default', 'Default', true, ThemeFactory()) ],
+    muiThemes: [ ThemeFactory('default', 'Default', true, MuiThemeFactory()) ],
     selectedProjectId: -1,
     isSelectedProjectRemote: false,
     isATaskMoving: false,

@@ -5,7 +5,7 @@ import { USERS, PROJECTS, PROJECTLAYOUTS, TASKS, TASKLISTS, ACCOUNT, ACCOUNT_DOC
 import { setUserUid, getUserUid, TaskCommentQueryLimit } from '../../pounder-firebase';
 import { ProjectStore, ProjectLayoutStore, TaskListStore, TaskListSettingsStore, TaskStore, CssConfigStore, MemberStore,
 InviteStore, RemoteStore, TaskMetadataStore, DirectoryStore, ProjectFactory, ChecklistSettingsFactory, TaskCommentFactory,
-LayoutEntryFactory, JobFactory, MuiThemeFactory} from '../../pounder-stores';
+LayoutEntryFactory, JobFactory, ThemeFactory} from '../../pounder-stores';
 import * as JobTypes from '../../pounder-firebase/jobTypes';
 import Moment from 'moment';
 import { includeMetadataChanges } from '../index';

@@ -1,6 +1,5 @@
 import Dexie from 'dexie';
 import BuiltInThemes from '../pounder-themes';
-import { MuiThemeFactory, ThemeFactory } from '../pounder-stores';
 
 let db = null;
 let isSetup = false;
