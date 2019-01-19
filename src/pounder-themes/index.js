@@ -4,6 +4,7 @@ const Themes = [
     require('./Blues.json'),
     require('./Warm'),
     require('./Go.json'),
+    require('./Muted.json'),
 ]
 
 export default Themes;

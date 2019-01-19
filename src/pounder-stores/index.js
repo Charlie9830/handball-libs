@@ -11,9 +11,18 @@ export function ThemeFactory() {
     return {
         type: 'dark',
         palette: {
-            primaryColorId: 'blue',
-            secondaryColorId: 'orange',
-            backgroundColorId: 'grey',
+            primaryColor: {
+                id: 'blue',
+                shadeIndex: 5
+            },
+            secondaryColor: {
+                id: 'orange',
+                shadeIndex: 5
+            },
+            backgroundColor: {
+                id: 'grey',
+                shadeIndex: 5,
+            },
             custom: {
                 "today": '#1455c0',
                 "soon": '#FF9300',

@@ -813,7 +813,7 @@ export function createNewMuiThemeAsync() {
             return item.id === selectedMuiThemeId;
         })
 
-        let newTheme = {...selectedMuiThemeEntity};
+        let newTheme = JSON.parse(JSON.stringify(selectedMuiThemeEntity)); // Deep clone as createMuiTheme augments the color's in place.
         newTheme.id = GetUid();
         newTheme.name = themeName;
         newTheme.isInbuilt = false;

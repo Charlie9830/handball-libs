@@ -1,25 +1,34 @@
 {
-    "id": "4238e100-1a3a-11e9-9ce7-15f944a3c4a8",
-    "name": "Blues",
-    "isInbuilt": true,
-    "theme": {
-      "type": "light",
-      "palette": {
-        "primaryColorId": "indigo",
-        "secondaryColorId": "indigo",
-        "backgroundColorId": "lightBlue",
-        "custom": {
-          "today": "#1455c0",
-          "soon": "#FF9300",
-          "overdue": "#F00",
-          "later": "#22B30B",
-          "unreadItem": "#1455c0",
-          "highPriority": "orange"
-        }
+  "id": "blues",
+  "name": "Blues",
+  "isInbuilt": true,
+  "theme": {
+    "type": "dark",
+    "palette": {
+      "primaryColor": {
+        "id": "indigo",
+        "shadeIndex": 4
       },
-      "isDense": false,
-      "typography": {
-        "useNextVariants": true
+      "secondaryColor": {
+        "id": "lime",
+        "shadeIndex": 4
+      },
+      "backgroundColor": {
+        "id": "indigo",
+        "shadeIndex": 9
+      },
+      "custom": {
+        "today": "#1455c0",
+        "soon": "#FF9300",
+        "overdue": "#F00",
+        "later": "#22B30B",
+        "unreadItem": "#1455c0",
+        "highPriority": "orange"
       }
+    },
+    "isDense": false,
+    "typography": {
+      "useNextVariants": true
     }
   }
+}

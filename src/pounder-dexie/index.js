@@ -1,5 +1,6 @@
 import Dexie from 'dexie';
 import BuiltInThemes from '../pounder-themes';
+import { MuiThemeFactory, ThemeFactory } from '../pounder-stores';
 
 let db = null;
 let isSetup = false;
@@ -38,7 +39,8 @@ export function initializeDexie() {
 }
 
 function setBuiltInThemes(db) {
-    db.muiThemes.bulkPut(BuiltInThemes);
+    db.muiThemes.bulkPut(BuiltInThemes).then( () => {
+    });
 }
 
 
