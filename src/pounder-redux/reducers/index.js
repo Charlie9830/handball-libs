@@ -726,6 +726,13 @@ export function appReducer(state, action) {
                 ...state,
                 informationDialog: action.value,
             }
+
+        case ActionTypes.SET_ITEM_SELECT_DIALOG: {
+            return {
+                ...state,
+                itemSelectDialog: action.value,
+            }
+        }
         
         case ActionTypes.SET_CONFIRMATION_DIALOG:
             return {

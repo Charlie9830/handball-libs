@@ -49,6 +49,13 @@ export function setInformationDialog(isOpen, text, title, onOkay) {
     }
 }
 
+export function setItemSelectDialog(isOpen, title, text, items, affirmativeButtonText, negativeButtonText, onAffirmative, onNegative) {
+    return {
+        type: ActionTypes.SET_ITEM_SELECT_DIALOG,
+        value: { isOpen, title, text, items, affirmativeButtonText, negativeButtonText, onAffirmative, onNegative }
+    }
+}
+
 export function cancelTaskMove() {
     return {
         type: ActionTypes.CANCEL_TASK_MOVE,
@@ -844,7 +851,6 @@ export function getLocalMuiThemes() {
         catch(error) {
             console.error(error);
         }
-        
     }
 }
 export function startTaskMoveAsync(taskId, sourceTaskListId) {
@@ -854,14 +860,40 @@ export function startTaskMoveAsync(taskId, sourceTaskListId) {
     }   
 }
 
-export function moveTaskListToProjectAsync(sourceProjectId, targetProjectId, taskListWidgetId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+export function moveTaskListToProjectAsync(taskListId, sourceProjectId) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let otherProjects = getState().projects.filter( item => {
+            return item.uid !== sourceProjectId;
+        })
+
+        let items = otherProjects.map(item => {
+            return {
+                primaryText: item.projectName,
+                value: item.uid,
+            }
+        })
+
+        let dialogResult = await postItemSelectDialog(dispatch,
+            getState(),
+            'Move List',
+            'Choose project',
+            items,
+            "Move",
+            "Cancel"
+        )
+        
+        if (dialogResult.result === 'negative') {
+            return;
+        }
+
+        let targetProjectId = dialogResult.value;
+
         if (!isProjectRemote(getState, sourceProjectId) && !isProjectRemote(getState, targetProjectId) ) {
             // Both Projects are Local.
             var batch = new FirestoreBatchPaginator(getFirestore());
 
             // Move Tasks.
-            var taskIds = collectTaskListRelatedTaskIds(getState().tasks, taskListWidgetId);
+            var taskIds = collectTaskListRelatedTaskIds(getState().tasks, taskListId);
 
             taskIds.forEach( id => {
                 var ref = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc(id);
@@ -869,7 +901,7 @@ export function moveTaskListToProjectAsync(sourceProjectId, targetProjectId, tas
             })
 
             // Move Task List.
-            var taskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc(taskListWidgetId);
+            var taskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc(taskListId);
 
             batch.update(taskListRef, { project: targetProjectId });
 
@@ -877,16 +909,16 @@ export function moveTaskListToProjectAsync(sourceProjectId, targetProjectId, tas
             var currentLayouts = getState().projectLayoutsMap[sourceProjectId][sourceProjectId].layouts;
             if (currentLayouts) {
                 var filteredLayouts = currentLayouts.filter(item => {
-                    return item.i !== taskListWidgetId;
+                    return item.i !== taskListId;
                 })
 
                 dispatch(updateProjectLayoutAsync(filteredLayouts, currentLayouts, sourceProjectId));
-                addProjectLayoutEntriesToBatch(batch, targetProjectId, taskListWidgetId, getFirestore, getState);
+                addProjectLayoutEntriesToBatch(batch, targetProjectId, taskListId, getFirestore, getState);
             }
 
             var payload = {
                 targetProjectId: targetProjectId,
-                taskListWidgetId: taskListWidgetId,
+                taskListWidgetId: taskListId,
                 sourceTasksRefPath: getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).path,
             }
 
@@ -907,30 +939,30 @@ export function moveTaskListToProjectAsync(sourceProjectId, targetProjectId, tas
             // One or both projects are Remote.
             var batch = new FirestoreBatchPaginator(getFirestore());
             
-            var refs = buildTaskListMoveRefs(sourceProjectId, targetProjectId, taskListWidgetId, getFirestore, getState);
+            var refs = buildTaskListMoveRefs(sourceProjectId, targetProjectId, taskListId, getFirestore, getState);
 
             // Move Tasks
-            var tasks = collectTaskListRelatedTasks(getState().tasks, taskListWidgetId);
+            var tasks = collectTaskListRelatedTasks(getState().tasks, taskListId);
 
             tasks.forEach(task => {
                 batch.set(refs.target.tasks.doc(task.uid), { ...task, project: targetProjectId });
             })
 
             // Move Task List.
-            var taskList = getState().taskLists.find(item => { return item.uid === taskListWidgetId });
+            var taskList = getState().taskLists.find(item => { return item.uid === taskListId });
 
             batch.set(refs.target.taskList, {...taskList, project: targetProjectId });
             batch.update(refs.source.taskList, { isMoving: true });
 
             // Move Project Layouts.
-            addProjectLayoutMovesToBatch(batch, sourceProjectId, targetProjectId, taskListWidgetId, getFirestore, getState);
+            addProjectLayoutMovesToBatch(batch, sourceProjectId, targetProjectId, taskListId, getFirestore, getState);
 
             // Create a Cleanup Job for the Server.
             var payload = {
                 sourceProjectId: sourceProjectId,
                 targetProjectId: targetProjectId,
-                taskListWidgetId: taskListWidgetId,
-                taskIds: collectTaskListRelatedTaskIds(getState().tasks, taskListWidgetId),
+                taskListWidgetId: taskListId,
+                taskIds: collectTaskListRelatedTaskIds(getState().tasks, taskListId),
                 targetTasksRefPath: refs.target.tasks.path,
                 targetTaskListRefPath: refs.target.taskList.path,
                 sourceTasksRefPath: refs.source.tasks.path,
@@ -3998,6 +4030,57 @@ function postInformationDialog(dispatch, state, text, title) {
         }
 
         dispatch(setInformationDialog(true, text, title, onOkay));
+    })
+}
+
+function postItemSelectDialog(dispatch, state, title, text, items, affirmativeButtonText, negativeButtonText) {
+    return new Promise( (resolve, reject) => {
+        let onAffirmative = (value) => {
+            dispatch(setItemSelectDialog(
+                false,
+                state.itemSelectDialog.title,
+                state.itemSelectDialog.text,
+                state.itemSelectDialog.items,
+                state.itemSelectDialog.affirmativeButtonText,
+                state.itemSelectDialog.negativeButtonText,
+                () => {},
+                () => {},
+            ))
+
+            resolve( {
+                result: 'affirmative',
+                value: value,
+            })
+        }
+
+        let onNegative = () => {
+            dispatch(setItemSelectDialog(
+                false,
+                state.itemSelectDialog.title,
+                state.itemSelectDialog.text,
+                state.itemSelectDialog.items,
+                state.itemSelectDialog.affirmativeButtonText,
+                state.itemSelectDialog.negativeButtonText,
+                () => {},
+                () => {},
+            ))
+
+            resolve( {
+                result: 'negative',
+            })
+        }
+
+        // Post dialog.
+        dispatch(setItemSelectDialog(
+            true,
+            title,
+            text,
+            items,
+            affirmativeButtonText,
+            negativeButtonText,
+            onAffirmative,
+            onNegative
+        ))
     })
 }
 
