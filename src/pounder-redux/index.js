@@ -67,7 +67,7 @@ var initialState = {
     projectLayoutsHavePendingWrites: false,
     taskListsHavePendingWrites: false,
     tasksHavePendingWrites: false,
-    isTaskListJumpMenuOpen: false,
+    isJumpMenuOpen: false,
     isShuttingDown: false,
     isStartingUp: true,
     appSettingsMenuPage: "general",

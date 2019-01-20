@@ -516,15 +516,15 @@ export function setTasksHavePendingWrites(value) {
     }
 }
 
-export function openTaskListJumpMenu() {
+export function openJumpMenu() {
     return {
-        type: ActionTypes.OPEN_TASK_LIST_JUMP_MENU,
+        type: ActionTypes.OPEN_JUMP_MENU
     }
 }
 
-export function closeTaskListJumpMenu() {
+export function closeJumpMenu() {
     return {
-        type: ActionTypes.CLOSE_TASK_LIST_JUMP_MENU,
+        type: ActionTypes.CLOSE_JUMP_MENU
     }
 }
 

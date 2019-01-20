@@ -377,16 +377,16 @@ export function appReducer(state, action) {
                 tasksHavePendingWrites: action.value,
             }
         
-        case ActionTypes.OPEN_TASK_LIST_JUMP_MENU:
+        case ActionTypes.OPEN_JUMP_MENU:
             return {
                 ...state,
-                isTaskListJumpMenuOpen: true,
+                isJumpMenuOpen: true,
             }
         
-        case ActionTypes.CLOSE_TASK_LIST_JUMP_MENU:
+        case ActionTypes.CLOSE_JUMP_MENU:
             return {
                 ...state,
-                isTaskListJumpMenuOpen: false,
+                isJumpMenuOpen: false,
             }
         
         case ActionTypes.SET_IS_SHUTTING_DOWN_FLAG:
