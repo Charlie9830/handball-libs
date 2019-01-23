@@ -467,6 +467,13 @@ export function appReducer(state, action) {
             }
         }
 
+        case ActionTypes.SET_QUICK_ITEM_SELECT_DIALOG: {
+            return {
+                ...state,
+                quickItemSelectDialog: action.value,
+            }
+        }
+
         case ActionTypes.RECEIVE_ACCOUNT_CONFIG: {
             return {
                 ...state,

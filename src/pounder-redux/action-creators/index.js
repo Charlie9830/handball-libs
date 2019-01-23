@@ -56,6 +56,13 @@ export function setItemSelectDialog(isOpen, title, text, items, affirmativeButto
     }
 }
 
+export function setQuickItemSelectDialog(isOpen, title, text, items, negativeButtonText, onSelect, onNegative) {
+    return {
+        type: ActionTypes.SET_QUICK_ITEM_SELECT_DIALOG,
+        value: { isOpen, title, text, items, negativeButtonText, onSelect, onNegative }
+    }
+}
+
 export function cancelTaskMove() {
     return {
         type: ActionTypes.CANCEL_TASK_MOVE,
@@ -218,6 +225,7 @@ export function setAuthStatusMessage(message) {
         value: message,
     }
 }
+
 
 export function setMessageBox(isOpen, dialogTitle, message, type, dataStore, closeCallback) {
     return {
@@ -2987,29 +2995,46 @@ export function updateTaskListNameAsync(taskListId, currentName) {
     }
 }
 
-
-export function moveTaskAsync(destinationTaskListId, taskId) {
+export function moveTaskViaDialogAsync(taskId, sourceTaskListId, sourceProjectId) {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(startTaskMoveInDatabase());
+        let lists = getState().taskLists.filter( item => {
+            return item.project === sourceProjectId && item.uid !== sourceTaskListId;
+        })
 
-        if ( getState().sourceTaskListId === destinationTaskListId) {
-            // User wants to cancel Move.
-            dispatch(endTaskMove(movingTaskId, destinationTaskListId));
-            dispatch(setFocusedTaskListId(destinationTaskListId));
+        let items = lists.map( item => {
+            return {
+                value: item.uid,
+                primaryText: item.taskListName,
+            }
+        })
+
+        let dialogResult = await postQuickItemSelectDialog(
+            dispatch,
+            getState(),
+            "Move Task",
+            "Choose list",
+            items,
+            "Cancel")
+        
+        if (dialogResult.result === 'negative') {
+            return;
         }
 
-        // If Task was moved via Drag and Drop, taskId will have been passed in as parameter.
-        var movingTaskId = taskId === undefined ? getState().movingTaskId : taskId;
-        var taskRef = getTaskRef(getFirestore, getState, movingTaskId);
+        let destinationTaskListId = dialogResult.value;
 
-        // Can't get currentMetadata from the Task directly, so extract it here.
-        var currentMetadata = getState().tasks.find(task => { return task.uid === movingTaskId }).metadata;
+        if (destinationTaskListId === -1) {
+            return;
+        } 
 
-        dispatch(endTaskMove(movingTaskId, destinationTaskListId));
+        // Extract metadata.
+        var currentMetadata = getState().tasks.find(item => { return item.uid === taskId }).metadata;
+
         dispatch(setFocusedTaskListId(destinationTaskListId));
 
         // Project updated metadata.
         updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+
+        let taskRef = getTaskRef(getFirestore, getState, taskId);
 
         try {
             await taskRef.update({
@@ -4062,6 +4087,54 @@ function postInformationDialog(dispatch, state, text, title) {
         }
 
         dispatch(setInformationDialog(true, text, title, onOkay));
+    })
+}
+
+function postQuickItemSelectDialog(dispatch, state, title, text, items, negativeButtonText) {
+    return new Promise( (resolve, reject) => {
+        let onSelect = (value) => {
+            dispatch(setQuickItemSelectDialog(
+                false,
+                state.quickItemSelectDialog.title,
+                state.quickItemSelectDialog.text,
+                state.quickItemSelectDialog.items,
+                state.quickItemSelectDialog.negativeButtonText,
+                () => {},
+                () => {},
+            ))
+
+            resolve( {
+                result: 'affirmative',
+                value: value,
+            })
+        }
+
+        let onNegative = () => {
+            dispatch(setQuickItemSelectDialog(
+                false,
+                state.quickItemSelectDialog.title,
+                state.quickItemSelectDialog.text,
+                state.quickItemSelectDialog.items,
+                state.quickItemSelectDialog.negativeButtonText,
+                () => {},
+                () => {},
+            ))
+
+            resolve( {
+                result: 'negative',
+            })
+        }
+
+        // Post dialog.
+        dispatch(setQuickItemSelectDialog(
+            true,
+            title,
+            text,
+            items,
+            negativeButtonText,
+            onSelect,
+            onNegative,
+        ))
     })
 }
 
