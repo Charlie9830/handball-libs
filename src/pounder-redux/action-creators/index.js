@@ -2802,7 +2802,7 @@ export function addNewProjectAsync() {
             }
 
             // Update Firestore.    
-            var newProjectName = dialogResult.value;
+            var newProjectName = dialogResult.value === '' ? 'Untitled Project' : dialogResult.value;
             var batch = getFirestore().batch();
 
             // Project.
