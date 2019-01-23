@@ -3011,8 +3011,8 @@ export function moveTaskViaDialogAsync(taskId, sourceTaskListId, sourceProjectId
         let dialogResult = await postQuickItemSelectDialog(
             dispatch,
             getState(),
-            "Move Task",
-            "Choose list",
+            "Select List",
+            '',
             items,
             "Cancel")
         
