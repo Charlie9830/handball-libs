@@ -3144,15 +3144,17 @@ export function getAccountConfigAsync() {
 
                 // Dexie returns numbers as strings. Convert "-1" to a number if required.
                 var favouriteProjectId = accountConfig.favouriteProjectId === "-1" ?
-                    parseInt(accountConfig.favouriteProjectId) :
-                    accountConfig.favouriteProjectId;
+                    -1 : accountConfig.favouriteProjectId;
 
-                dispatch(selectProject(favouriteProjectId));
-                
-                if (HANDBALL_DEVICE === "mobile" && favouriteProjectId !== -1) {
-                    dispatch(setIsAppDrawerOpen(false));
-                    dispatch(setIsAppSettingsOpen(false));
+                if (favouriteProjectId !== -1) {
+                    dispatch(selectProject(favouriteProjectId));
+
+                    if (HANDBALL_DEVICE === "mobile" && favouriteProjectId !== -1) {
+                        dispatch(setIsAppDrawerOpen(false));
+                        dispatch(setIsAppSettingsOpen(false));
+                    }
                 }
+                
             }
         }, error => {
             handleFirebaseSnapshotError(error, getState(), dispatch);

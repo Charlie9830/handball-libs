@@ -146,7 +146,7 @@ var initialState = {
 export var appStore = createStore(
     appReducer,
     initialState,
-applyMiddleware(ReduxThunk.withExtraArgument( { getFirestore, getAuth, getDexie, getFunctions } ), /* Logger */ )
+applyMiddleware(ReduxThunk.withExtraArgument( { getFirestore, getAuth, getDexie, getFunctions } ), /* Logger */)
 );
 
 // Types.
