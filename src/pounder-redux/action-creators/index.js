@@ -2644,10 +2644,40 @@ export function updateProjectNameAsync(projectId, oldValue) {
 }
 
 export function removeProjectAsync(projectId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        if (projectId === -1) {
+            return;
+        }
+
+        dispatch(selectProject(projectId));
         dispatch(setShowOnlySelfTasks(false));
 
-        if (getState.selectedProjectId !== -1) {
+        if (isProjectRemote(getState, projectId) === true) {
+            // Direct user to Share menu
+            dispatch(setIsShareMenuOpen(true));
+            return;
+        }
+
+        let dialogResult = await postConfirmationDialog(
+            dispatch,
+            getState(),
+            "Are you sure you want to delete this project?",
+            "Delete project?",
+            "Delete",
+            "Cancel"
+        )
+
+        if (dialogResult.result === 'negative') {
+            return;
+        }
+
+        dispatch(removeLocalProjectAsync(projectId));
+    }
+}
+
+export function removeLocalProjectAsync(projectId) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        if (getState().selectedProjectId !== -1) {
             dispatch(setShowCompletedTasksAsync(false));
             dispatch(selectProject(-1));
             // Get a List of Task List Id's . It's Okay to collect these from State as associated taskLists have already
