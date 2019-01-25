@@ -2807,22 +2807,34 @@ export function addNewProjectAsync() {
 
             // Project.
             var newProjectRef = getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTS).doc();
-            var newProjectKey = newProjectRef.id;
+            var newProjectId = newProjectRef.id;
 
-            var newProject = new ProjectStore(newProjectName, newProjectKey, false, new Date().toISOString(), "");
+            var newProject = new ProjectStore(newProjectName, newProjectId, false, new Date().toISOString(), "");
             batch.set(newProjectRef, Object.assign({}, newProject));
 
             // Layout
-            var newLayoutRef = getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTLAYOUTS).doc(newProjectKey);
+            var newLayoutRef = getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTLAYOUTS).doc(newProjectId);
 
-            var newProjectLayout = new ProjectLayoutStore([], newProjectKey, newProjectKey);
+            var newProjectLayout = new ProjectLayoutStore([], newProjectId, newProjectId);
             batch.set(newLayoutRef, Object.assign({}, newProjectLayout));
 
+            // Add an initial task list.
+            let newTaskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc();
+            let newTaskList = new TaskListStore(
+                'Assorted',
+                newProjectId,
+                newTaskListRef.id,
+                newTaskListRef.id,
+                Object.assign({}, new TaskListSettingsStore(true, "date added", ChecklistSettingsFactory(false, "", "", 1))),
+            )
+
+            batch.set(newTaskListRef, {...newTaskList});
+
             // Selections.
-            dispatch(selectProject(newProjectKey));
-            dispatch(setOpenProjectSelectorId(newProjectKey));
-
-
+            dispatch(selectProject(newProjectId));
+            dispatch(setOpenProjectSelectorId(newProjectId));
+            dispatch(setFocusedTaskListId(newTaskListRef.id));
+            
             // Execute Additions.
             batch.commit().then(() => {
                 // Carefull what you do here, promises don't resolve if you are offline.
@@ -3110,7 +3122,7 @@ export function addNewTaskAsync() {
     }
 }
 
-export function addNewTaskListAsync() {
+export function addNewTaskListAsync(suppressMetadataUpdate) {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setShowOnlySelfTasks(false));
         var selectedProjectId = getState().selectedProjectId;
@@ -3154,7 +3166,9 @@ export function addNewTaskListAsync() {
                 dispatch(setFocusedTaskListId(newTaskListRef.id));
 
                 // Project updated metadata.
-                updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+                if (suppressMetadataUpdate === false) {
+                    updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+                }
             }
         }
     }

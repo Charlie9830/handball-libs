@@ -150,6 +150,14 @@ export function appReducer(state, action) {
                 isInRegisterMode: action.value,
             }
 
+        case ActionTypes.RECEIVE_LOCAL_PROJECTS:
+            return {
+                ...state,
+                localProjects: action.projects,
+                projects: [...sortProjects(state.generalConfig.sortProjectsBy, action.projects), ...state.remoteProjects],
+                isAwaitingFirebase: false,
+            }
+
         case ActionTypes.RECEIVE_REMOTE_PROJECTS:
             return {
                 ...state,
