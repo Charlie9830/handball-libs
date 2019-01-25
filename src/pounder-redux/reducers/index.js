@@ -136,7 +136,7 @@ export function appReducer(state, action) {
                 textInputDialog: action.value,
             }
         
-        case ActionTypes.RECEIVE_LOCAL_PROJECTS:
+        case ActionTypes.LOCAL_PROJECTS:
             return {
                 ...state,
                 localProjects: action.projects,
@@ -193,7 +193,7 @@ export function appReducer(state, action) {
                 tasks: newTasks,
                 incompletedLocalTasks: action.value,
                 projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks),
-                openTaskInspectorEntity: updateOpenTaskInspectorEntity(action.value, state.openTaskInspectorId)
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId)
             }
 
         case ActionTypes.RECEIVE_COMPLETED_LOCAL_TASKS:
@@ -203,7 +203,7 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 tasks: newTasks,
                 completedLocalTasks: action.value,
-                openTaskInspectorEntity: updateOpenTaskInspectorEntity(action.value, state.openTaskInspectorId),
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId),
             }
 
         case ActionTypes.RECEIVE_INCOMPLETED_REMOTE_TASKS:
@@ -214,7 +214,7 @@ export function appReducer(state, action) {
                 tasks: newTasks,
                 incompletedRemoteTasks: action.value,
                 projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks),
-                openTaskInspectorEntity: updateOpenTaskInspectorEntity(action.value, state.openTaskInspectorId),
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId),
             }
         
         case ActionTypes.RECEIVE_COMPLETED_REMOTE_TASKS:
@@ -224,7 +224,7 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 tasks: newTasks,
                 completedRemoteTasks: action.value,
-                openTaskInspectorEntity: updateOpenTaskInspectorEntity(action.value, state.openTaskInspectorId)
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId)
             }
 
         case ActionTypes.SET_IS_PROJECT_MENU_OPEN:
