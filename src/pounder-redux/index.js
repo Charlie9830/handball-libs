@@ -150,6 +150,10 @@ var initialState = {
     openChecklistSettingsEntity: null,
     isASnackbarOpen: false,
     selectedMuiThemeId: 'default',
+    enableStates: {
+        newProject: false,
+        newTaskFab: false,
+    }
 }
 
 export var appStore = createStore(

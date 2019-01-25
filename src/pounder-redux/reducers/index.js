@@ -12,6 +12,7 @@ export function appReducer(state, action) {
                 isTaskListJumpMenuOpen: false,
                 selectedTask: processSelectedTask(state.selectedTask, action.id),
                 openTaskOptionsId: -1,
+                enableStates: { ...state.enableStates, newTaskFab: action.id !== -1 }
             };
         
         case ActionTypes.SELECT_TASK:
@@ -350,7 +351,8 @@ export function appReducer(state, action) {
                 openTaskListSettingsMenuId: -1,
                 isTaskListJumpMenuOpen: false,
                 showOnlySelfTasks: false,
-                isAppDrawerOpen: action.projectId === -1 ? true : false
+                isAppDrawerOpen: action.projectId === -1 ? true : false,
+                enableStates: {...state.enableStates, newTaskFab: false}
             }
         
         case ActionTypes.SET_PROJECTS_HAVE_PENDING_WRITES: 
@@ -522,6 +524,7 @@ export function appReducer(state, action) {
                 isLoggedIn: action.value,
                 isLoggingIn: false,
                 isInRegisterMode: false,
+                enableStates: { ...state.enableStates, newProject: action.value}
             }
         }
         
