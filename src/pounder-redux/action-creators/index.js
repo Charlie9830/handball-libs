@@ -1118,9 +1118,8 @@ export function getTaskCommentsAsync(taskId) {
 }
 
 export function paginateTaskCommentsAsync(taskId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (getState().taskComments.length > 0) {
-            var selectedProjectId = getState().selectedProjectId;
             var previousQueryLastDoc = getState().taskComments[getState().taskComments.length - 1].doc;
 
             if (previousQueryLastDoc !== undefined) {
@@ -1129,13 +1128,15 @@ export function paginateTaskCommentsAsync(taskId) {
                 var ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS)
                     .orderBy("timestamp", "desc").startAfter(previousQueryLastDoc).limit(TaskCommentQueryLimit + 1);
 
-                ref.get().then(snapshot => {
+                try {
+                    let snapshot = await ref.get();
                     handleTaskCommentsSnapshot("pagination", snapshot, dispatch, getState);
                     dispatch(setIsTaskCommentsPaginating(false));
+                }
 
-                }).catch(error => {
+                catch(error) {
                     handleFirebaseSnapshotError(error, getState(), dispatch, getState);
-                })
+                }
             }
         }
 
@@ -1143,34 +1144,27 @@ export function paginateTaskCommentsAsync(taskId) {
 }
 
 export function deleteTaskCommentAsync(taskId, commentId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        var selectedProjectId = getState().selectedProjectId;
-
-        var ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS).doc(commentId);
-
-        ref.delete().then(() => {
-            // Success
-        }).catch(error => {
-            handleFirebaseUpdateError(error, getState(), dispatch);
-        })
-
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         // Update State.
-        var newTaskComments = getState().taskComments.filter( item => {
+        var newTaskComments = getState().taskComments.filter(item => {
             return item.uid !== commentId;
         })
 
         dispatch(receiveTaskComments(newTaskComments));
+
+        // Update Database
+        var ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS).doc(commentId);
+        try {
+            await ref.delete();
+        }
+
+        catch(error) {
+            handleFirebaseUpdateError(error, getState(), dispatch);
+        }
     }
 }
 
 function handleTaskCommentsSnapshot(type, snapshot, dispatch, getState) {
-
-        // Determine based on the Snapshot Size if the Query has retreived all of the Task Comments.
-        // Problem is however that if the Query Size matches the TaskCommentsQueryLimit, there are edge cases where
-        // there could be no more Commments. As in the total size of the Comments collection is evenly divisable by the
-        // TaskCOmmentsQueryLimit.. You could try actually fetching the TaskCommentsQueryLimit + 1 and using the extra one
-        // to determine if the Query is finished whilst still only showing the TaskCommentsQueryLimit to the user.
-
         var taskComments = [];
         var counter = 0;
         snapshot.forEach(doc => {
@@ -1202,9 +1196,7 @@ function handleTaskCommentsSnapshot(type, snapshot, dispatch, getState) {
             var mergedTaskComments = [...getState().taskComments, ...taskComments ];
 
             dispatch(receiveTaskComments(mergedTaskComments));
-        }
-        
-        
+        }  
 }
 
 export function postNewCommentAsync(taskId, value) {
