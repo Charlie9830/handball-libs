@@ -2,7 +2,7 @@ import * as ActionTypes from '../action-types/index';
 import FirestoreBatchPaginator from '../../firestore-batch-paginator';
 import { USERS, PROJECTS, PROJECTLAYOUTS, TASKS, TASKLISTS, ACCOUNT, ACCOUNT_DOC_ID,
      REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY, TASKCOMMENTS, JOBS_QUEUE, MUI_THEMES } from '../../pounder-firebase/paths';
-import { setUserUid, getUserUid, TaskCommentQueryLimit } from '../../pounder-firebase';
+import { setUserUid, getUserUid, TaskCommentQueryLimit, TaskCommentPreviewLimit } from '../../pounder-firebase';
 import { ProjectStore, ProjectLayoutStore, TaskListStore, TaskListSettingsStore, TaskStore, CssConfigStore, MemberStore,
 InviteStore, RemoteStore, TaskMetadataStore, DirectoryStore, ProjectFactory, ChecklistSettingsFactory, TaskCommentFactory,
 LayoutEntryFactory, JobFactory, ThemeFactory} from '../../pounder-stores';
@@ -1023,10 +1023,9 @@ export function updateProjectLayoutTypeAsync(projectLayoutType) {
 }
 
 
-export function openTaskInspectorAsync(taskId) {
+export function openTaskInspector(taskId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setOpenTaskInspectorId(taskId));
-        dispatch(getTaskCommentsAsync(taskId));
     }
 }
 
@@ -1102,18 +1101,20 @@ export function closeTaskInspectorAsync() {
 }
 
 export function getTaskCommentsAsync(taskId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        var selectedProjectId = getState().selectedProjectId;
-            dispatch(startTaskCommentsGet());
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        dispatch(startTaskCommentsGet());
 
-            var ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS)
+        let ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS)
             .orderBy("timestamp", "desc").limit(TaskCommentQueryLimit + 1);
 
-            ref.get().then( snapshot => {
-                handleTaskCommentsSnapshot("initial", snapshot, dispatch);
-            }).catch(error => {
-                handleFirebaseSnapshotError(error, getState(), dispatch, getState );
-            })
+        try {
+            let snapshot = await ref.get();
+            handleTaskCommentsSnapshot("initial", snapshot, dispatch);
+        }
+
+        catch (error) {
+            handleFirebaseSnapshotError(error, getState(), dispatch, getState);
+        }
     }
 }
 
@@ -1152,10 +1153,14 @@ export function deleteTaskCommentAsync(taskId, commentId) {
 
         dispatch(receiveTaskComments(newTaskComments));
 
-        // Update Database
-        var ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS).doc(commentId);
+        let batch = getFirestore().batch();
+        let taskRef = getTaskRef(getFirestore, getState, taskId);
+        let commentRef = taskRef.collection(TASKCOMMENTS).doc(commentId);
+
+        batch.update(taskRef, { commentPreview: generateNewCommentPreview(newTaskComments)});
+        batch.delete(commentRef)
         try {
-            await ref.delete();
+            await batch.commit();
         }
 
         catch(error) {
@@ -1168,7 +1173,7 @@ function handleTaskCommentsSnapshot(type, snapshot, dispatch, getState) {
         var taskComments = [];
         var counter = 0;
         snapshot.forEach(doc => {
-            // Take only enough Comments to equalt TaskCommentQueryLimit. comment[TaskCommentQueryLimit + 1] is only used to
+            // Take only enough Comments to equal TaskCommentQueryLimit. comment[TaskCommentQueryLimit + 1] is only used to
             // determine if Pagination is completed.
             if (counter < TaskCommentQueryLimit) {
                 var comment = {
@@ -1199,40 +1204,46 @@ function handleTaskCommentsSnapshot(type, snapshot, dispatch, getState) {
         }  
 }
 
+function generateNewCommentPreview(fullComments) {
+    let comments = [...fullComments];
+    let startIndex = 0;
+    let endIndex = TaskCommentPreviewLimit;
+
+    let previewComments = comments.slice(startIndex, endIndex);
+
+    // Strip out doc objects.
+    return previewComments.map( item => {
+        let returnItem = { ...item };
+        delete returnItem.doc;
+        return returnItem;
+    })
+}
+
+
 export function postNewCommentAsync(taskId, value) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         var selectedProjectId = getState().selectedProjectId;
 
-        var mentions = [];
-        var created = Moment().toISOString();
-        var createdBy = getUserUid();
-        var displayName = getState().displayName;
-        var seenBy = [createdBy];
-        var newCommentRef = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS).doc();
+        let mentions = [];
+        let created = Moment().toISOString();
+        let createdBy = getUserUid();
+        let displayName = getState().displayName;
+        let seenBy = [createdBy];
+        let taskRef = getTaskRef(getFirestore, getState, taskId);
+        let newCommentRef = taskRef.collection(TASKCOMMENTS).doc();
 
-        var taskComment = TaskCommentFactory(newCommentRef.id, value, mentions, created, createdBy, seenBy, displayName);
-
-        newCommentRef.set(taskComment).then(() => {
-            // Success. Update newly posted comment's isSynced flag.
-            var commentIndex = getState().taskComments.findIndex(item => {
-                return item.uid === newCommentRef.id;
-            })
-
-            if (commentIndex !== -1) {
-                var comments = [...getState().taskComments];
-                comments[commentIndex].isSynced = true;
-
-                dispatch(receiveTaskComments(comments));
-            }
-
-        }).catch(error => {
-            handleFirebaseUpdateError(error, getState(), dispatch);
-        })
+        let taskComment = TaskCommentFactory(newCommentRef.id, value, mentions, created, createdBy, seenBy, displayName);
+        
 
         // Add to State.
         var existingComments = [...getState().taskComments];
-        existingComments.push({ isSynced: false, ...taskComment });
+        existingComments.unshift({ isSynced: false, ...taskComment });
         dispatch(receiveTaskComments(existingComments));
+
+        // Add to Database.
+        let batch = getFirestore().batch();
+        batch.set(newCommentRef, taskComment); // Comment into Comment Collection.
+        batch.update(taskRef, { commentPreview: generateNewCommentPreview(existingComments) }); // Comment into Comment Preview collection.
 
         // Add a Hashtable to Task to indicate the User ID's that have unseen Comments.
         // Also add a flag to indicate this Task may have Comments. This helps the Migration Functions.
@@ -1245,15 +1256,29 @@ export function postNewCommentAsync(taskId, value) {
             unseenMembers[item.userId] = "0";
         })
 
-        var taskRef = getTaskRef(getFirestore, getState, taskId);
-        taskRef.update({
+        batch.update(taskRef, {
             unseenTaskCommentMembers: unseenMembers,
             mightHaveTaskComments: true,
-        }).then(() => {
-            // Success
-        }).catch(error => {
+        });
+
+        try {
+            await batch.commit();
+            // Success. Update newly posted comment's isSynced flag.
+            var commentIndex = getState().taskComments.findIndex(item => {
+                return item.uid === newCommentRef.id;
+            })
+    
+            if (commentIndex !== -1) {
+                var comments = [...getState().taskComments];
+                comments[commentIndex].isSynced = true;
+    
+                dispatch(receiveTaskComments(comments));
+            }
+        }
+
+        catch(error) {
             handleFirebaseUpdateError(error, getState(), dispatch);
-        })
+        }
     }
 }
 
@@ -3100,6 +3125,7 @@ export function addNewTaskAsync() {
                     parsedPriority,
                     Object.assign({}, metadata),
                     -1,
+                    [],
                 )
 
                 newTaskRef.set(Object.assign({}, newTask)).then(() => {
@@ -3263,6 +3289,7 @@ function handleTasksSnapshot(getState, dispatch, isRemote, snapshot, remoteProje
             // Coercion
             task.dueDate = task.dueDate === null ? "" : task.dueDate;
             task.metadata = task.metadata === undefined ? { ...new TaskMetadataStore("","","","","","") } : task.metadata;
+            task.commentPreview = task.commentPreview === undefined ? [] : task.commentPreview;
 
             tasks.push(task);
         });

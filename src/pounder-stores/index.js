@@ -140,7 +140,7 @@ export class TaskListStore {
 }
 
 export class TaskStore {
-    constructor(taskName, dueDate, isComplete, project, taskList, uid, dateAdded, isNewTask, isHighPriority, metadata, assignedTo) {
+    constructor(taskName, dueDate, isComplete, project, taskList, uid, dateAdded, isNewTask, isHighPriority, metadata, assignedTo, commentPreview) {
         this.taskName = taskName;
         this.dueDate = dueDate;
         this.isComplete = isComplete;
@@ -152,6 +152,7 @@ export class TaskStore {
         this.isHighPriority = isHighPriority;
         this.metadata = metadata;
         this.assignedTo = assignedTo;
+        this.commentPreview = commentPreview;
     }
 }
 
