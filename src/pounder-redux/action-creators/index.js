@@ -13,7 +13,7 @@ import parseArgs from 'minimist';
 import stringArgv from 'string-argv';
 import Fuse from 'fuse.js';
 import { getDayPickerDate, getClearedDate, getDaysForwardDate, getWeeksForwardDate, getParsedDate, getNormalizedDate,
-isChecklistDueForRenew, isDayName, getDayNameDate, getProjectLayoutType, GetUid} from '../../pounder-utilities';
+isChecklistDueForRenew, isDayName, getDayNameDate, getProjectLayoutType, GetUid, GetDisplayNameFromLookup} from '../../pounder-utilities';
 var loremIpsum = require('lorem-ipsum');
 
 const legalArgsRegEx = / -dd | -hp /i;
@@ -786,11 +786,15 @@ export function removeMuiThemeAsync(id) {
             return;
         }
 
+        let themeName = getState().muiThemes.find(item => {
+            return item.id === id;
+        }).name;
+
         let dialogResult = await postConfirmationDialog(
             dispatch,
             getState(),
-            'Are you sure you want to delete this theme?',
-            'Delete theme',
+            `Are you sure you want to delete ${themeName}`,
+            `Delete Theme`,
             'Delete',
             'Cancel'
         );
@@ -1721,6 +1725,7 @@ export function migrateProjectBackToLocalAsync(projectId, preCondition) {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         let confirmationText = 'This will remove all other users from the project, and make it available only to yourself, are you sure you want to continue?';
         let dialogResult = await postConfirmationDialog(dispatch, getState(), confirmationText, 'Make project Personal', 'Continue', 'Cancel');
+
         if (dialogResult.result === 'affirmative') {
             // Extract project from State before you unsubscribe from Database.
             var project = extractProject(getState, projectId);
@@ -1968,10 +1973,12 @@ export function updateMemberRoleAsync(userId, projectId, newRole) {
 
 export function leaveRemoteProjectAsync(projectId, userId) {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let projectName = getProjectName(getState().projects, projectId);
+
         let dialogResult = await postConfirmationDialog(
             dispatch,
             getState(),
-            'Are you sure you want to leave this project?',
+            `Are you sure you want to leave ${projectName}?`,
             'Leave project',
             'Leave',
             'Cancel'
@@ -2001,12 +2008,15 @@ export function leaveRemoteProjectAsync(projectId, userId) {
 
 export function kickUserFromProjectAsync(projectId, userId) {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let displayName = GetDisplayNameFromLookup(userId, getState().memberLookup);
+        let projectName = getProjectName(getState().projects, projectId);
+
         let dialogResult = await postConfirmationDialog(
             dispatch,
             getState(),
-            'Are you sure you want to kick this user from the project?',
-            'Kick user',
-            'Kick User',
+            `Are you sure you want to remove ${displayName} from ${projectName}?`,
+            'Remove user',
+            'Remove',
             'Cancel'
              )
         
@@ -2576,12 +2586,14 @@ export function updateTaskListSettingsAsync(taskListWidgetId, newValue) {
 export function removeTaskListAsync(taskListWidgetId) {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (taskListWidgetId !== -1) {
+            let taskListName = getTaskListName(getState().taskLists, taskListWidgetId);
+
             let dialogResult = await postConfirmationDialog(
                 dispatch,
                 getState(),
-                'Are you sure you want to delete this list?',
+                `Are you sure you want to delete ${taskListName}?`,
                 'Delete List',
-                'Delete List',
+                `Delete`,
                 'Cancel'
                 )
 
@@ -2683,12 +2695,13 @@ export function removeProjectAsync(projectId) {
             return;
         }
 
+        let projectName = getProjectName(getState().projects, projectId);
         let dialogResult = await postConfirmationDialog(
             dispatch,
             getState(),
-            "Are you sure you want to delete this project?",
-            "Delete project?",
-            "Delete",
+            `Are you sure you want to delete ${projectName}?`,
+            'Delete Project',
+            `Delete`,
             "Cancel"
         )
 
@@ -2749,7 +2762,8 @@ export function removeLocalProjectAsync(projectId) {
 export function removeRemoteProjectAsync(projectId, preCondition) {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (preCondition === false) {
-            let text = 'Before you delete the project you must promote another member to owner status';
+            let projectName = getProjectName(getState().projects, projectId);
+            let text = `Before you delete ${projectName} you must promote another member to owner status`;
             let title = 'Hang on!';
 
             postInformationDialog(dispatch, getState(), text, title);
@@ -2758,9 +2772,10 @@ export function removeRemoteProjectAsync(projectId, preCondition) {
         }
 
         // Post Confirmation Dialog.
+        let projectName = getProjectName(getState().projects, projectId);
         let title = "Delete Project";
-        let text = "Project will be deleted forever. Are you really sure you want to continue?"
-        let affirmativeButtonText = 'Delete Project';
+        let text = `${projectName} will be deleted forever. Are you really sure you want to continue?`
+        let affirmativeButtonText = `Delete`;
         let negativeButtonText = 'Cancel'
         
         let dialogResult = await postConfirmationDialog(dispatch, getState(), text, title, affirmativeButtonText, negativeButtonText);
@@ -4317,4 +4332,37 @@ function wait(ms) {
     return new Promise( (resolve, reject) => {
         setTimeout( () => { resolve() }, ms);
     })
+}
+
+function getProjectName(projects, projectId) {
+    if (projects === undefined || projectId === undefined) {
+        return '';
+    } 
+
+    let project = projects.find(item => {
+        return item.uid === projectId;
+    })
+
+    if (project === undefined) {
+        return '';
+    }
+
+    return project.projectName;
+}
+
+
+function getTaskListName(taskLists, taskListId) {
+    if (taskLists === undefined || taskListId === undefined) {
+        return '';
+    } 
+
+    let taskList = taskLists.find(item => {
+        return item.uid === taskListId;
+    })
+
+    if (taskList === undefined) {
+        return '';
+    }
+
+    return taskList.taskListName;
 }
