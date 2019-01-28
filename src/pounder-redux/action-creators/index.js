@@ -346,6 +346,13 @@ export function openChecklistSettings(taskListId, existingChecklistSettings) {
     }
 }
 
+export function setIsOnboarding(value) {
+    return {
+        type: ActionTypes.SET_IS_ONBOARDING,
+        value: value,
+    }
+}
+
 export function closeChecklistSettings() {
     return {
         type: ActionTypes.CLOSE_CHECKLIST_SETTINGS,
@@ -1448,7 +1455,7 @@ export function sendPasswordResetEmailAsync() {
 }
 
 export function registerNewUserAsync(email, password, displayName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
 
         if (displayName === "") {
             postGeneralSnackbar(dispatch, getState(), 'information', 'Please enter a Display Name', 4000, '');
@@ -1464,22 +1471,23 @@ export function registerNewUserAsync(email, password, displayName) {
             // issues.
             newUser = { email: parsedEmail, displayName: displayName };
 
-            getAuth().createUserWithEmailAndPassword(parsedEmail, password).then(() => {
-                // Push their desired Display name to Authentication.
-                getAuth().currentUser.updateProfile({ displayName: displayName }).then( () => {
+            try {
+                await getAuth().createUserWithEmailAndPassword(parsedEmail, password)
+                try {
+                    // Push their desired Display name to Authentication.
+                    await getAuth().currentUser.updateProfile({ displayName: displayName })
                     dispatch(setDisplayName(displayName));
-
-                }).catch(error => {
+                }
+                catch (error) {
                     handleFirebaseUpdateError(error, getState(), dispatch);
                     newUser = null;
-                })
+                }
+            }
 
-
-            }).catch(error => {
+            catch (error) {
                 handleAuthError(dispatch, getState(), error);
                 dispatch(setIsLoggingInFlag(false));
-
-            })
+            }   
         }
     }
 }
@@ -2166,7 +2174,7 @@ function moveProjectToRemoteLocationAsync(getFirestore, getState, projectId, cur
 
 export function attachAuthListenerAsync() {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        getAuth().onAuthStateChanged(user => {
+        getAuth().onAuthStateChanged(async user => {
             if (user) {
                 if (newUser !== null) {
                     // A new user has just registered.
@@ -2181,18 +2189,23 @@ export function attachAuthListenerAsync() {
 
                     //  Make a directory listing for them.
                     var ref = getFirestore().collection(DIRECTORY).doc(newUser.email);
-                    ref.set(Object.assign({}, new DirectoryStore(newUser.email, newUser.displayName, user.uid))).then(() => {
-                        // Complete.
+                    
+                    try {
+                        await ref.set(Object.assign({}, new DirectoryStore(newUser.email, newUser.displayName, user.uid)));
                         newUser = null;
-                    }).catch(error => {
-                        var message = `Critical error while setting directory listing, please contact the developer. Error : ${error.code}
-                         ${error.message}`;
-                         postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
-                    });
+                    }
+
+                    catch (error) {
+                        postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
+                    }
                 }
 
                 if (getState().generalConfig.isFirstTimeBoot) {
                     clearFirstTimeBootFlag(dispatch, getState);
+                }
+
+                if (getState().isOnboarding) {
+                    dispatch(setIsOnboarding(false));
                 }
                 
                 // User is Logged in.

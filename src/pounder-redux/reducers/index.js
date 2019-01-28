@@ -436,9 +436,7 @@ export function appReducer(state, action) {
                     ...state,
                     generalConfig: action.value,
                     isDexieConfigLoadComplete: true,
-                    isAppSettingsOpen: true,
-                    isSidebarOpen: true,
-                    appSettingsMenuPage: 'account',
+                    isOnboarding: true,
                     isInRegisterMode: true,
                 }
             }
@@ -474,6 +472,14 @@ export function appReducer(state, action) {
                 ...state,
                 isAppSettingsOpen: action.value,
                 ignoreFullscreenTrigger: true, // Stops the App toggling to Fullscreen imediately as the User selects the option.
+            }
+        }
+
+        case ActionTypes.SET_IS_ONBOARDING: {
+            return {
+                ...state,
+                isOnboarding: action.value,
+                isAppDrawerOpen: action.value === false,
             }
         }
 

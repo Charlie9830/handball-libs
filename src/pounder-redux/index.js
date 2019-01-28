@@ -153,7 +153,8 @@ var initialState = {
     enableStates: {
         newProject: false,
         newTaskFab: false,
-    }
+    },
+    isOnboarding: false,
 }
 
 export var appStore = createStore(
