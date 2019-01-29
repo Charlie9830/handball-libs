@@ -5,6 +5,7 @@ import ReduxThunk from 'redux-thunk';
 import { setupFirebase, getFirestore, getAuth, getFunctions, AccountConfigFallback } from '../pounder-firebase';
 import { ProjectLayoutStore, CssConfigStore, MuiThemeFactory, ThemeFactory } from '../pounder-stores';
 import { initializeDexie, getDexie, generalConfigFallback } from '../pounder-dexie';
+import { DefaultTheme } from '../pounder-themes';
 
 export var includeMetadataChanges = { includeMetadataChanges: false }
 
@@ -50,7 +51,7 @@ var initialState = {
     remoteProjectLayouts: [],
     selectedTask: { taskListWidgetId: -1, taskId: -1, isInputOpen: false },
     localMuiThemes: [],
-    muiThemes: [ ThemeFactory('default', 'Default', true, MuiThemeFactory()) ],
+    muiThemes: [ DefaultTheme ],
     selectedProjectId: -1,
     isSelectedProjectRemote: false,
     isATaskMoving: false,

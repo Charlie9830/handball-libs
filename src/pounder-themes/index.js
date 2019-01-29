@@ -7,4 +7,10 @@ const Themes = [
     require('./Muted.json'),
 ]
 
+let DefaultTheme = Themes.find(item => {
+    return item.id === 'default';
+})
+export { DefaultTheme };
+
+
 export default Themes;
