@@ -2984,32 +2984,41 @@ export function updateProjectLayoutAsync(layouts, oldLayouts, projectId) {
 }
 
 
-export function updateTaskNameAsync(taskId, currentValue, currentMetadata) {
+export function updateTaskNameAsync(taskId, newValue, currentValue, currentMetadata) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        // Coerce.
+        newValue = newValue === '' ? currentValue : newValue;
+
+        var update = {
+            taskName: newValue,
+            isNewTask: false, // Reset new Task Property.
+            metadata: getUpdatedMetadata(currentMetadata, { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
+        }
+
+        // Returns a new Update Object with arguments parsed in (if any);
+        var newUpdate = parseArgumentsIntoUpdate(getState, update);
+
+        // Update Firestore.
+        var taskRef = getTaskRef(getFirestore, getState, taskId);
+        taskRef.update(newUpdate).then(() => {
+            // Carefull what you do here, promises don't resolve if you are offline.
+        }).catch(error => {
+            handleFirebaseUpdateError(error, getState(), dispatch);
+        })
+
+        // Project updated metadata.
+        updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+    }
+}
+
+export function updateTaskNameWithDialogAsync(taskId, currentValue, currentMetadata) {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
             let dialogResult = await postTextInputDialog(dispatch, getState(), "Name", currentValue, "Edit Task name");
 
             if (dialogResult.result === "okay") {
                 let newValue = dialogResult.value;
 
-                var update = {
-                    taskName: newValue,
-                    isNewTask: false, // Reset new Task Property.
-                    metadata: getUpdatedMetadata(currentMetadata, { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
-                }
-    
-                // Returns a new Update Object with arguments parsed in (if any);
-                var newUpdate = parseArgumentsIntoUpdate(getState, update);
-    
-                // Update Firestore.
-                var taskRef = getTaskRef(getFirestore, getState, taskId);
-                taskRef.update(newUpdate).then(() => {
-                    // Carefull what you do here, promises don't resolve if you are offline.
-                }).catch(error => {
-                    handleFirebaseUpdateError(error, getState(), dispatch);
-                })
-    
-                // Project updated metadata.
-                updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+                dispatch(updateTaskNameAsync(taskId, newValue, currentValue, currentMetadata));
             }  
     }
 }
@@ -3158,6 +3167,9 @@ export function addNewTaskAsync() {
             let dialogResult = await postTextInputDialog(dispatch, getState(), "Name", "", "Create Task");
             if (dialogResult.result === "okay") {
                 let taskName = dialogResult.value;
+
+                // Coerce.
+                taskName = taskName === '' ? 'My Task' : taskName;
 
                 // Add new Task.
                 let newTaskRef;

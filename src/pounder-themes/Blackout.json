@@ -26,6 +26,7 @@
         "highPriority": "orange"
       }
     },
+    "hideTaskEditIcon": false,
     "isDense": false,
     "typography": {
       "useNextVariants": true
