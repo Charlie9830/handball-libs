@@ -172,12 +172,19 @@ export function setIsShareMenuWaiting(value) {
     }
 }
 
-export function setIsShareMenuOpen(isOpen) {
+export function openShareMenu(projectId) {
     return {
-        type: ActionTypes.SET_IS_SHARE_MENU_OPEN,
-        value: isOpen,
+        type: ActionTypes.OPEN_SHARE_MENU,
+        value: projectId,
     }
 }
+
+export function closeShareMenu() {
+    return {
+        type: ActionTypes.CLOSE_SHARE_MENU,
+    }
+}
+
 export function setIsAppDrawerOpen(isOpen) {
     return {
         type: ActionTypes.SET_IS_APP_DRAWER_OPEN,
@@ -1912,9 +1919,8 @@ function moveProjectToLocalLocationAsync(getState, getFirestore, projectId, curr
     })  
 }
 
-export function inviteUserToProjectAsync(targetEmail) {
+export function inviteUserToProjectAsync(targetEmail, projectId) {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        let projectId = getState().selectedProjectId;
         let projectName = getState().projects.find( item => { return item.uid === projectId }).projectName;
         let sourceDisplayName = getState().displayName;
         let sourceEmail = getState().userEmail;
@@ -1924,7 +1930,7 @@ export function inviteUserToProjectAsync(targetEmail) {
         dispatch(setShareMenuMessage('Searching for User...'));
 
         var slowMessageTimer = setTimeout(() => {
-            var message = "Hang tight!\nThe servers are waking up. Subsequent operations will complete faster."
+            var message = "Hang tight!\n The servers are waking up."
             dispatch(setShareMenuSubMessage(message));
         }, 5000)
 
@@ -2041,7 +2047,7 @@ export function leaveRemoteProjectAsync(projectId, userId) {
                 await kickUserFromProject({ userId: userId, projectId: projectId })
 
                 dispatch(selectProject(-1));
-                dispatch(setIsShareMenuOpen(false));
+                dispatch(closeShareMenu());
                 dispatch(setIsAppDrawerOpen(true));
 
                 postGeneralSnackbar(dispatch, getState(), 'information', 'Left Project', 4000, '');
@@ -2746,7 +2752,7 @@ export function removeProjectAsync(projectId) {
 
         if (isProjectRemote(getState, projectId) === true) {
             // Direct user to Share menu
-            dispatch(setIsShareMenuOpen(true));
+            dispatch(openShareMenu(projectId));
             return;
         }
 
@@ -2770,11 +2776,13 @@ export function removeProjectAsync(projectId) {
 
 export function removeLocalProjectAsync(projectId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        if (getState().selectedProjectId !== -1) {
+            if (projectId === -1) {
+                return;
+            }
+
             dispatch(setShowCompletedTasksAsync(false));
             dispatch(selectProject(-1));
-            // Get a List of Task List Id's . It's Okay to collect these from State as associated taskLists have already
-            // been loaded in via the handleProjectSelectorClick method. No point in querying Firebase again for this data.
+
             var taskListIds = getState().taskLists.filter(item => {
                 return item.project === projectId;
             }).map(taskList => { return taskList.uid });
@@ -2810,7 +2818,6 @@ export function removeLocalProjectAsync(projectId) {
             }).catch(error => {
                 handleFirebaseUpdateError(error, getState(), dispatch);
             })
-        }
     }
 }
 

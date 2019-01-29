@@ -89,7 +89,7 @@ var initialState = {
     displayName: "",
     isUpdateSnackbarOpen: false,
     isAppDrawerOpen: true,
-    isShareMenuOpen: false,
+    openShareMenuId: -1,
     isShareMenuWaiting: false,
     shareMenuMessage: "",
     shareMenuSubMessage: "",

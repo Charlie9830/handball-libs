@@ -605,18 +605,22 @@ export function appReducer(state, action) {
         }
 
         case ActionTypes.SET_UPDATING_INVITE_IDS:
-        return {
-            ...state,
-            updatingInviteIds: action.value,
-        }
-
-        case ActionTypes.SET_IS_SHARE_MENU_OPEN: {
             return {
                 ...state,
-                isShareMenuOpen: action.value,
-                userInviteMessage: action.value === false ? '' : state.userInviteMessage,
+                updatingInviteIds: action.value,
             }
-        }
+
+        case ActionTypes.OPEN_SHARE_MENU:
+            return {
+                ...state,
+                openShareMenuId: action.value,
+            }
+
+        case ActionTypes.CLOSE_SHARE_MENU:
+            return {
+                ...state,
+                openShareMenuId: -1,
+            }
 
         case ActionTypes.SET_IS_SHARE_MENU_WAITING: {
             return {
