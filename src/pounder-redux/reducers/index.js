@@ -201,7 +201,8 @@ export function appReducer(state, action) {
                 tasks: newTasks,
                 incompletedLocalTasks: action.value,
                 projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks),
-                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId)
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId),
+                filteredTasks: filterTasksByProject(newTasks, state.selectedProjectId, state.showOnlySelfTasks),
             }
 
         case ActionTypes.RECEIVE_COMPLETED_LOCAL_TASKS:
@@ -212,6 +213,7 @@ export function appReducer(state, action) {
                 tasks: newTasks,
                 completedLocalTasks: action.value,
                 openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId),
+                filteredTasks: filterTasksByProject(newTasks, state.selectedProjectId, state.showOnlySelfTasks),
             }
 
         case ActionTypes.RECEIVE_INCOMPLETED_REMOTE_TASKS:
@@ -223,6 +225,7 @@ export function appReducer(state, action) {
                 incompletedRemoteTasks: action.value,
                 projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks),
                 openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId),
+                filteredTasks: filterTasksByProject(newTasks, state.selectedProjectId, state.showOnlySelfTasks),
             }
         
         case ActionTypes.RECEIVE_COMPLETED_REMOTE_TASKS:
@@ -232,7 +235,8 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 tasks: newTasks,
                 completedRemoteTasks: action.value,
-                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId)
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId),
+                filteredTasks: filterTasksByProject(newTasks, state.selectedProjectId, state.showOnlySelfTasks),
             }
 
         case ActionTypes.SET_IS_PROJECT_MENU_OPEN:
@@ -286,21 +290,35 @@ export function appReducer(state, action) {
             }
 
         case ActionTypes.RECEIVE_LOCAL_TASKLISTS:
+            var newTaskLists = [...action.taskLists, ...state.remoteTaskLists];
+            var newFilteredTaskLists = filterTaskListsByProject(newTaskLists, state.selectedProjectId);
+            var focusedTaskListId = maybeForceFocusTaskList(state.focusedTaskListId, newFilteredTaskLists);
+            
             return {
                 ...state,
                 isAwaitingFirebase: false,
-                taskLists: [...action.taskLists, ...state.remoteTaskLists],
+                taskLists: newTaskLists,
                 localTaskLists: action.taskLists,
-                openChecklistSettingsEntity: updateOpenChecklistSettingsEntity(action.taskLists, state.openChecklistSettingsId)
+                openChecklistSettingsEntity: updateOpenChecklistSettingsEntity(newTaskLists, state.openChecklistSettingsId),
+                filteredTaskLists: newFilteredTaskLists,
+                focusedTaskListId: focusedTaskListId,
+                enableStates: { ...state.enableStates, newTaskFab: focusedTaskListId !== -1 }
             }
 
         case ActionTypes.RECEIVE_REMOTE_TASKLISTS:
+            var newTaskLists = [...state.localTaskLists, ...action.taskLists];
+            var newFilteredTaskLists = filterTaskListsByProject(newTaskLists, state.selectedProjectId);
+            var focusedTaskListId = maybeForceFocusTaskList(state.focusedTaskListId, newFilteredTaskLists);
+
             return {
                 ...state,
                 isAwatingFirebase: false,
-                taskLists: [...state.localTaskLists, ...action.taskLists],
+                taskLists: newTaskLists,
                 remoteTaskLists: action.taskLists,
-                openChecklistSettingsEntity: updateOpenChecklistSettingsEntity(action.taskLists, state.openChecklistSettingsId)
+                openChecklistSettingsEntity: updateOpenChecklistSettingsEntity(newTaskLists, state.openChecklistSettingsId),
+                filteredTaskLists: newFilteredTaskLists,
+                focusedTaskListId: focusedTaskListId,
+                enableStates: { ...state.enableStates, newTaskFab: focusedTaskListId !== -1 }
             }
         
         case ActionTypes.START_PROJECTLAYOUTS_FETCH:
@@ -338,6 +356,9 @@ export function appReducer(state, action) {
             }
         
         case ActionTypes.SELECT_PROJECT:
+            var filteredTaskLists = filterTaskListsByProject(state.taskLists, action.projectId);
+            var focusedTaskListId = action.value === -1 ? -1 : maybeForceFocusTaskList(state.focusedTaskListId, filteredTaskLists);
+
             return {
                 ...state,
                 selectedProjectId: action.projectId,
@@ -355,12 +376,14 @@ export function appReducer(state, action) {
                 isATaskMoving: false,
                 movingTaskId: -1,
                 sourceTaskListId: -1,
-                focusedTaskListId: -1,
+                focusedTaskListId: focusedTaskListId,
                 openTaskListSettingsMenuId: -1,
                 isTaskListJumpMenuOpen: false,
                 showOnlySelfTasks: false,
                 isAppDrawerOpen: action.projectId === -1 ? true : false,
-                enableStates: {...state.enableStates, newTaskFab: false}
+                enableStates: {...state.enableStates, newTaskFab: focusedTaskListId !== -1},
+                filteredTasks: filterTasksByProject(state.tasks, action.projectId, state.showOnlySelfTasks),
+                filteredTaskLists: filteredTaskLists
             }
         
         case ActionTypes.SET_PROJECTS_HAVE_PENDING_WRITES: 
@@ -590,9 +613,11 @@ export function appReducer(state, action) {
                 remoteProjects: [],
                 remoteProjectIds: [],
                 taskLists: [],
+                filteredTaskLists: [],
                 localTaskLists: [],
                 remoteTaskLists: [],
                 tasks: [],
+                filteredTasks: [],
                 incompletedLocalTasks: [],
                 completedLocalTasks: [],
                 incompletedRemoteTasks: [],
@@ -678,7 +703,7 @@ export function appReducer(state, action) {
                 showOnlySelfTasks: action.value,
                 openTaskOptionsId: -1,
                 selectedTask: {taskListWidgetId: -1, taskId: -1, isInputOpen: false},
-
+                filteredTasks: filterTasksByProject(state.tasks, state.selectedProjectId, action.value),
             }
         }
 
@@ -1010,5 +1035,38 @@ function getSelectedProjectLayout(projectId, members, projectLayoutsMap) {
           }
 
           return null;
+      }
+  }
+
+  function filterTaskListsByProject(taskLists, projectId) {
+      if (projectId === -1 || projectId === undefined || taskLists === undefined) {
+          return [];
+      }
+
+      return taskLists.filter(item => {
+          return item.project === projectId;
+      })
+  }
+
+  function filterTasksByProject(tasks, projectId, showOnlySelfTasks) {
+    if (projectId === -1 || projectId === undefined || tasks === undefined) {
+        return [];
+    }
+
+    let selfTasksExpression = showOnlySelfTasks === true ? 
+    (assignedToId) => { return assignedToId === getUserUid() } : () => { return true }
+
+    return tasks.filter(item => {
+        return item.project === projectId && selfTasksExpression(item.assignedTo);
+    })
+  }
+
+  function maybeForceFocusTaskList(existingValue, filteredTaskLists) {
+      if (filteredTaskLists.length >= 1) {
+          return filteredTaskLists[0].uid;
+      }
+
+      else {
+          return existingValue;
       }
   }
