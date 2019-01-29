@@ -784,9 +784,16 @@ export function renameMuiThemeAsync(id) {
         }
         
         catch(error) {
+            postGeneralSnackbar(
+                dispatch,
+                getState(),
+                'error',
+                "An error occured whilst renaming theme",
+                0,
+                'Dismiss'
+            )
             console.error(error);
         }
-
     }
 }
 
@@ -832,6 +839,14 @@ export function removeMuiThemeAsync(id) {
         }
 
         catch(error) {
+            postGeneralSnackbar(
+                dispatch,
+                getState(),
+                'error',
+                'An error occured whilst deleting theme',
+                0,
+                'Dismiss'
+            )
             console.error(error);
         }
     }
@@ -867,6 +882,14 @@ export function createNewMuiThemeAsync() {
         }
         
         catch(error) {
+            postGeneralSnackbar(
+                dispatch,
+                getState(),
+                'error',
+                "An error occured whilst creating new Theme",
+                0,
+                'Dismiss'
+            )
             console.error(error);
         }
     }
@@ -880,6 +903,14 @@ export function getLocalMuiThemes() {
         }
 
         catch(error) {
+            postGeneralSnackbar(
+                dispatch,
+                getState(),
+                'error',
+                "An error occured whilst retrieving Local themes",
+                0,
+                "Dismiss"
+            )
             console.error(error);
         }
     }
