@@ -42,6 +42,18 @@ export function setShowOnlySelfTasks(newValue) {
     }
 }
 
+export function stepOnboarderForwards() {
+    return {
+        type: ActionTypes.STEP_ONBOARDER_FORWARD,
+    }
+}
+
+export function stepOnboarderBackwards() {
+    return {
+        type: ActionTypes.STEP_ONBOARDER_BACKWARDS,
+    }
+}
+
 export function setInformationDialog(isOpen, text, title, onOkay) {
     return {
         type: ActionTypes.SET_INFORMATION_DIALOG,
@@ -2698,8 +2710,7 @@ export function removeProjectAsync(projectId) {
         if (projectId === -1) {
             return;
         }
-
-        dispatch(selectProject(projectId));
+        
         dispatch(setShowOnlySelfTasks(false));
 
         if (isProjectRemote(getState, projectId) === true) {

@@ -155,6 +155,7 @@ var initialState = {
         newTaskFab: false,
     },
     isOnboarding: false,
+    onboarderStep: 0,
 }
 
 export var appStore = createStore(

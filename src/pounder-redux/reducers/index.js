@@ -778,6 +778,18 @@ export function appReducer(state, action) {
                 openChecklistSettingsEntity: null,
             }
 
+        case ActionTypes.STEP_ONBOARDER_FORWARD:
+            return {
+                ...state,
+                onboarderStep: state.onboarderStep++,
+            }
+        
+        case ActionTypes.STEP_ONBOARDER_BACKWARDS:
+            return {
+                ...state,
+                onboarderStep: state.onboarderStep--,
+            }
+
         default:
             console.log("App Reducer is missing a Case for action:  " + action.type);
             return state;
