@@ -434,6 +434,12 @@ export function appReducer(state, action) {
                 appSettingsMenuPage: action.value,
             }
 
+        case ActionTypes.SET_IS_INDUCTING:
+            return {
+                ...state,
+                isInducting: action.value,
+            }
+
         case ActionTypes.SET_DATABASE_INFO:
             return {
                 ...state,
@@ -454,6 +460,7 @@ export function appReducer(state, action) {
         
         case ActionTypes.RECEIVE_GENERAL_CONFIG: {
             if (isFirstTimeBoot(action.value)) {
+                console.log("First TIme Boot");
                 // First Time Boot.
                 return {
                     ...state,
@@ -461,6 +468,17 @@ export function appReducer(state, action) {
                     isDexieConfigLoadComplete: true,
                     isOnboarding: true,
                     isInRegisterMode: true,
+                }
+            }
+
+            if (hasBeenUpdated(action.value) === true && state.isOnboarding === false) {
+                // App has just updated.
+                console.log("Updated");
+                return {
+                    ...state,
+                    generalConfig: action.value,
+                    isDexieConfigLoadComplete: true,
+                    isInducting: true,
                 }
             }
 
@@ -1070,3 +1088,16 @@ function getSelectedProjectLayout(projectId, members, projectLayoutsMap) {
           return existingValue;
       }
   }
+
+  function hasBeenUpdated(generalConfig) {
+    if (generalConfig.appVersion === undefined) {
+      return true;
+
+      // In future.
+      // generalConfig.appVersion !== HANDBALL_VERSION
+    }
+
+    else {
+        return false;
+    }
+}

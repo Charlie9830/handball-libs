@@ -159,6 +159,7 @@ var initialState = {
     },
     isOnboarding: false,
     onboarderStep: 0,
+    isInducting: false,
 }
 
 export var appStore = createStore(

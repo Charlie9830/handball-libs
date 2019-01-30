@@ -550,6 +550,13 @@ export function setTasksHavePendingWrites(value) {
     }
 }
 
+export function setIsInducting(value) {
+    return {
+        type: ActionTypes.SET_IS_INDUCTING,
+        value: value,
+    }
+}
+
 export function openJumpMenu() {
     return {
         type: ActionTypes.OPEN_JUMP_MENU
@@ -720,6 +727,17 @@ function setOpenTaskInspectorId(taskId) {
 }
 
 // Thunks
+export function bumpVersionNumberToCurrentAsync() {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let generalConfig = { ...getState().generalConfig };
+
+        generalConfig.appVersion = HANDBALL_VERSION;
+
+        dispatch(setGeneralConfigAsync(generalConfig));
+    }
+}
+
+
 export function persistMuiThemeSelection() {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         let generalConfig = {...getState().generalConfig};
@@ -2418,6 +2436,7 @@ export function getGeneralConfigAsync() {
                     syncAppToConfig(config, dispatch);
                 }
             }
+
             // If data doesn't exist in Dexie we can safely assume that the Fallback values given to the initial state
             // are still correct.
             if (getState().isStartingUp) {
