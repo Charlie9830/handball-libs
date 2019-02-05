@@ -1033,6 +1033,7 @@ export function moveTaskListToProjectAsync(taskListId, sourceProjectId) {
 
             tasks.forEach(task => {
                 batch.set(refs.target.tasks.doc(task.uid), { ...task, project: targetProjectId });
+                batch.delete(refs.source.tasks.doc(task.uid));
             })
 
             // Move Task List.
