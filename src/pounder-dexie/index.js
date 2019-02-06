@@ -30,7 +30,7 @@ export function initializeDexie() {
     })
 
     db.on("populate", () => {
-        db.generalConfig.put({id: 0, value: { isFirstTimeBoot: true }});
+        db.generalConfig.put({id: 0, value: { isFirstTimeBoot: true, appVersion: HANDBALL_VERSION }});
         setBuiltInThemes(db);
     });
 
