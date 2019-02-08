@@ -1102,7 +1102,6 @@ export function updateProjectLayoutTypeAsync(projectLayoutType) {
     }
 }
 
-
 export function openTaskInspector(taskId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setOpenTaskInspectorId(taskId));
