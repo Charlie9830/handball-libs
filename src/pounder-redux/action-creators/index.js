@@ -1112,24 +1112,25 @@ export function openTaskInspector(taskId) {
 export function closeTaskInspectorAsync() {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         // Save some Info before it is destroyed by the closeTaskInfo() Action.
-        var openTaskInspectorId = getState().openTaskInspectorId;
-        var taskComments = [...getState().taskComments];
+        let openTaskInspectorId = getState().openTaskInspectorId;
+        let openTaskInspectorEntity = {...getState().openTaskInspectorEntity}
+        let allTaskComments = [...openTaskInspectorEntity.commentPreview, ...getState().taskComments];
+        let newCommentPreview = [...openTaskInspectorEntity.commentPreview];
+        let selectedProjectId = getState().selectedProjectId;
+        let taskRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS)
+        .doc(openTaskInspectorId);
 
         dispatch(setOpenTaskInspectorId(-1));
         dispatch(setIsAllTaskCommentsFetched(false));
 
-        // Add User ID to Seenby of any Unseen Task Comments.
-        var selectedProjectId = getState().selectedProjectId;
+        // Add User ID to Seenby of any Unseen Task Comments or Comment Preview.
         if (isProjectRemote(getState, selectedProjectId) === true) {
             var batch = getFirestore().batch();
             var unseenCommentsFound = false;
 
-            taskComments.forEach(comment => {
-                var isUnseen = !comment.seenBy.some(id => {
-                    return id === getUserUid();
-                })
-
-                if (isUnseen === true) {
+            allTaskComments.forEach(comment => {
+                // Comment is Unseen.
+                if (!comment.seenBy.includes(getUserUid())) {
                     unseenCommentsFound = true;
 
                     var ref = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS)
@@ -1138,9 +1139,18 @@ export function closeTaskInspectorAsync() {
                     var newSeenBy = comment.seenBy;
                     newSeenBy.push(getUserUid());
 
+                    // Update Comment Reference.
                     batch.update(ref, { seenBy: newSeenBy });
+
+                    // Update Comment Preview.
+                    let index = newCommentPreview.findIndex(item => { item.uid === comment.uid});
+                    if (index !== -1 && newCommentPreview[index].seenBy.includes(getUserUid()) === false) {
+                        newCommentPreview[index].seenBy.push(getUserUid());
+                    }
                 }
             })
+
+            batch.update(taskRef, { commentPreview: newCommentPreview });
 
             batch.commit().then(() => {
                 // Success
@@ -1150,9 +1160,6 @@ export function closeTaskInspectorAsync() {
 
             // Update Task.unseenTaskCommentMembers if unseen Comments have been found.
             if (unseenCommentsFound === true) {
-                var taskRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS)
-                    .doc(openTaskInspectorId);
-
                 taskRef.get().then(doc => {
                     if (doc.exists) {
                         // Filter out current User from unseenCommentMembers.
@@ -1174,6 +1181,26 @@ export function closeTaskInspectorAsync() {
                     }
                 }).catch(error => {
                     handleFirebaseSnapshotError(error, getState(), dispatch);
+                })
+            }
+
+            // Update Comment Preview if it contains unseenComments.
+            let previewHasUnseenComments = openTaskInspectorEntity.commentPreview.some(comment => {
+                return comment.seenBy.includes(getUserUid());
+            })
+
+            if (previewHasUnseenComments) {
+                let newCommentPreview = [...openTaskInspectorEntity.commentPreview];
+                newCommentPreview.forEach(item => {
+                    if (item.seenBy.includes(getUserUid()) === false) {
+                        item.seenBy.push(getUserUid());
+                    }
+                })
+
+                taskRef.update({ commentPreview: newCommentPreview }).then(() => {
+
+                }).catch(error => {
+                    handleFirebaseUpdateError(error, getState(), dispatch)
                 })
             }
         }
@@ -1291,10 +1318,15 @@ function generateNewCommentPreview(fullComments) {
 
     let previewComments = comments.slice(startIndex, endIndex);
 
-    // Strip out doc objects.
+    // Strip out doc objects and add this user to Seenby.
     return previewComments.map( item => {
         let returnItem = { ...item };
-        delete returnItem.doc;
+        delete returnItem.doc; // Delete Doc reference.
+
+        if (returnItem.seenBy.find( (id) => { return id === getUserUid() }) === undefined) {
+            returnItem.seenBy.push(getUserUid());
+        }
+
         return returnItem;
     })
 }
