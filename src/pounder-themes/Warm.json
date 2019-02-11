@@ -1,0 +1,35 @@
+{
+  "id": "warm",
+  "name": "Warm",
+  "isInbuilt": true,
+  "theme": {
+    "type": "light",
+    "palette": {
+      "primaryColor": {
+        "id": "amber",
+        "shadeIndex": 7
+      },
+      "secondaryColor": {
+        "id": "deepOrange",
+        "shadeIndex": 5
+      },
+      "backgroundColor": {
+        "id": "amber",
+        "shadeIndex": 1
+      },
+      "custom": {
+        "today": "#1455c0",
+        "soon": "#FF9300",
+        "overdue": "#F00",
+        "later": "#22B30B",
+        "unreadItem": "#1455c0",
+        "highPriority": "orange"
+      }
+    },
+    "hideTaskEditIcon": false,
+    "isDense": false,
+    "typography": {
+      "useNextVariants": true
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "id": "whites",
+  "name": "Whites",
+  "isInbuilt": true,
+  "theme": {
+    "type": "light",
+    "palette": {
+      "primaryColor": {
+        "id": "blue",
+        "shadeIndex": 1
+      },
+      "secondaryColor": {
+        "id": "brown",
+        "shadeIndex": 4
+      },
+      "backgroundColor": {
+        "id": "grey",
+        "shadeIndex": 0
+      },
+      "custom": {
+        "today": "#1455c0",
+        "soon": "#FF9300",
+        "overdue": "#F00",
+        "later": "#22B30B",
+        "unreadItem": "#1455c0",
+        "highPriority": "orange"
+      }
+    },
+    "hideTaskEditIcon": false,
+    "isDense": false,
+    "typography": {
+      "useNextVariants": true
+    }
+  }
+}

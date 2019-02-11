@@ -1,0 +1,35 @@
+{
+    "id": "muted",
+    "name": "Muted",
+    "isInbuilt": true,
+    "theme": {
+      "type": "dark",
+      "palette": {
+        "primaryColor": {
+          "id": "darkGrey",
+          "shadeIndex": 5
+        },
+        "secondaryColor": {
+          "id": "lightBlue",
+          "shadeIndex": 10
+        },
+        "backgroundColor": {
+          "id": "black",
+          "shadeIndex": 12
+        },
+        "custom": {
+          "today": "#1455c0",
+          "soon": "#FF9300",
+          "overdue": "#F00",
+          "later": "#22B30B",
+          "unreadItem": "#1455c0",
+          "highPriority": "orange"
+        }
+      },
+      "hideTaskEditIcon": false,
+      "isDense": false,
+      "typography": {
+        "useNextVariants": true
+      }
+    }
+  }

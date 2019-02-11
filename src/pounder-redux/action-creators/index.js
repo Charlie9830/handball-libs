@@ -1,11 +1,11 @@
 import * as ActionTypes from '../action-types/index';
 import FirestoreBatchPaginator from '../../firestore-batch-paginator';
 import { USERS, PROJECTS, PROJECTLAYOUTS, TASKS, TASKLISTS, ACCOUNT, ACCOUNT_DOC_ID,
-     REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY, TASKCOMMENTS, JOBS_QUEUE } from '../../pounder-firebase/paths';
-import { setUserUid, getUserUid, TaskCommentQueryLimit } from '../../pounder-firebase';
+     REMOTE_IDS, REMOTES, MEMBERS, INVITES, DIRECTORY, TASKCOMMENTS, JOBS_QUEUE, MUI_THEMES } from '../../pounder-firebase/paths';
+import { setUserUid, getUserUid, TaskCommentQueryLimit, TaskCommentPreviewLimit } from '../../pounder-firebase';
 import { ProjectStore, ProjectLayoutStore, TaskListStore, TaskListSettingsStore, TaskStore, CssConfigStore, MemberStore,
 InviteStore, RemoteStore, TaskMetadataStore, DirectoryStore, ProjectFactory, ChecklistSettingsFactory, TaskCommentFactory,
-LayoutEntryFactory, JobFactory} from '../../pounder-stores';
+LayoutEntryFactory, JobFactory, ThemeFactory} from '../../pounder-stores';
 import * as JobTypes from '../../pounder-firebase/jobTypes';
 import Moment from 'moment';
 import { includeMetadataChanges } from '../index';
@@ -13,7 +13,7 @@ import parseArgs from 'minimist';
 import stringArgv from 'string-argv';
 import Fuse from 'fuse.js';
 import { getDayPickerDate, getClearedDate, getDaysForwardDate, getWeeksForwardDate, getParsedDate, getNormalizedDate,
-isChecklistDueForRenew, isDayName, getDayNameDate, getProjectLayoutType} from '../../pounder-utilities';
+isChecklistDueForRenew, isDayName, getDayNameDate, getProjectLayoutType, GetUid, GetDisplayNameFromLookup} from '../../pounder-utilities';
 var loremIpsum = require('lorem-ipsum');
 
 const legalArgsRegEx = / -dd | -hp /i;
@@ -22,23 +22,56 @@ const DATE_FORMAT = 'dddd MMMM Do YYYY, h:mm a';
 var newUser = null;
 
 // Database Unsubscribers.
-var localProjectsUnsubscribe = null;
-var localProjectLayoutsUnsubscribe = null;
-var remoteProjectIdsUnsubscribe = null;
-var localTaskListsUnsubscribe = null;
-var accountConfigUnsubscribe = null;
-var invitesUnsubscribe = null;
+let localProjectsUnsubscribe = null;
+let localProjectLayoutsUnsubscribe = null;
+let remoteProjectIdsUnsubscribe = null;
+let localTaskListsUnsubscribe = null;
+let accountConfigUnsubscribe = null;
+let invitesUnsubscribe = null;
 
-var onlyCompletedLocalTasksUnsubscribe = null;
-var onlyIncompletedLocalTasksUnsubscribe = null;
+let onlyCompletedLocalTasksUnsubscribe = null;
+let onlyIncompletedLocalTasksUnsubscribe = null;
 
-var remoteProjectsUnsubscribes = {};
+let remoteProjectsUnsubscribes = {};
 
 // Standard Action Creators.
 export function setShowOnlySelfTasks(newValue) {
     return {
         type: ActionTypes.SET_SHOW_ONLY_SELF_TASKS,
         value: newValue,
+    }
+}
+
+export function stepOnboarderForwards() {
+    return {
+        type: ActionTypes.STEP_ONBOARDER_FORWARD,
+    }
+}
+
+export function stepOnboarderBackwards() {
+    return {
+        type: ActionTypes.STEP_ONBOARDER_BACKWARDS,
+    }
+}
+
+export function setInformationDialog(isOpen, text, title, onOkay) {
+    return {
+        type: ActionTypes.SET_INFORMATION_DIALOG,
+        value: { isOpen, text, title, onOkay }
+    }
+}
+
+export function setItemSelectDialog(isOpen, title, text, items, affirmativeButtonText, negativeButtonText, onAffirmative, onNegative) {
+    return {
+        type: ActionTypes.SET_ITEM_SELECT_DIALOG,
+        value: { isOpen, title, text, items, affirmativeButtonText, negativeButtonText, onAffirmative, onNegative }
+    }
+}
+
+export function setQuickItemSelectDialog(isOpen, title, text, items, negativeButtonText, onSelect, onNegative) {
+    return {
+        type: ActionTypes.SET_QUICK_ITEM_SELECT_DIALOG,
+        value: { isOpen, title, text, items, negativeButtonText, onSelect, onNegative }
     }
 }
 
@@ -76,10 +109,10 @@ export function setOpenTaskListWidgetHeaderId(taskListId) {
     }
 }
 
-export function setFloatingTextInput(isOpen, currentText, targetType, niceTargetName, targetId) {
+export function setTextInputDialog(isOpen, label, text, title, onCancel, onOkay) {
     return {
-        type: ActionTypes.SET_FLOATING_TEXT_INPUT,
-        value: { isOpen: isOpen, currentText: currentText, targetType: targetType, niceTargetName: niceTargetName, targetId: targetId}
+        type: ActionTypes.SET_TEXT_INPUT_DIALOG,
+        value: { isOpen, label, text, title, onCancel, onOkay,}
     }
 }
 
@@ -139,15 +172,22 @@ export function setIsShareMenuWaiting(value) {
     }
 }
 
-export function setIsShareMenuOpen(isOpen) {
+export function openShareMenu(projectId) {
     return {
-        type: ActionTypes.SET_IS_SHARE_MENU_OPEN,
-        value: isOpen,
+        type: ActionTypes.OPEN_SHARE_MENU,
+        value: projectId,
     }
 }
-export function setIsSidebarOpen(isOpen) {
+
+export function closeShareMenu() {
     return {
-        type: ActionTypes.SET_IS_SIDEBAR_OPEN,
+        type: ActionTypes.CLOSE_SHARE_MENU,
+    }
+}
+
+export function setIsAppDrawerOpen(isOpen) {
+    return {
+        type: ActionTypes.SET_IS_APP_DRAWER_OPEN,
         value: isOpen,
     }
 }
@@ -170,12 +210,10 @@ export function dismissSnackbar() {
     }
 }
 
-export function postSnackbarMessage(message, isSelfDismissing, type) {
+export function setGeneralSnackbar(isOpen, type, text, selfDismissTime,  actionOptions = { actionButtonText: 'Okay', onAction: () => {}}) {
     return {
-        type: ActionTypes.POST_SNACKBAR_MESSAGE,
-        message: message,
-        isSelfDismissing: isSelfDismissing,
-        snackbarType: type,
+        type: ActionTypes.SET_GENERAL_SNACKBAR,
+        value: { isOpen, type, text, selfDismissTime, actionOptions }
     }
 }
 
@@ -207,16 +245,26 @@ export function setAuthStatusMessage(message) {
     }
 }
 
-export function setMessageBox(isOpen, message, type, dataStore, closeCallback) {
+
+export function setMessageBox(isOpen, dialogTitle, message, type, dataStore, closeCallback) {
     return {
         type: ActionTypes.SET_MESSAGE_BOX,
         value: {
             isOpen: isOpen,
+            dialogTitle: dialogTitle,
             message: message,
             type: type,
             closeCallback: closeCallback,
         }
     }
+}
+
+export function setOpenChecklistSettingsId(id) {
+    return {
+        type: ActionTypes.SET_OPEN_CHECKLIST_SETTINGS_ID,
+        value: id
+    }
+    
 }
 
 export function receiveCSSConfig(config) {
@@ -302,10 +350,31 @@ export function setIsShuttingDownFlag(isShuttingDown) {
     }
 }
 
-export function changeFocusedTaskList(id) {
+export function setFocusedTaskListId(id) {
     return {
-        type: ActionTypes.CHANGE_FOCUSED_TASKLIST,
+        type: ActionTypes.SET_FOCUSED_TASKLIST_ID,
         id: id
+    }
+}
+
+export function openChecklistSettings(taskListId, existingChecklistSettings) {
+    return {
+        type: ActionTypes.OPEN_CHECKLIST_SETTINGS,
+        taskListId: taskListId,
+        existingChecklistSettings: existingChecklistSettings
+    }
+}
+
+export function setIsOnboarding(value) {
+    return {
+        type: ActionTypes.SET_IS_ONBOARDING,
+        value: value,
+    }
+}
+
+export function closeChecklistSettings() {
+    return {
+        type: ActionTypes.CLOSE_CHECKLIST_SETTINGS,
     }
 }
 
@@ -334,13 +403,7 @@ export function closeTask(taskListWidgetId, taskId) {
     }
 }
 
-export function startTaskMove(movingTaskId, sourceTaskListWidgetId) {
-    return {
-        type: ActionTypes.START_TASK_MOVE,
-        movingTaskId: movingTaskId,
-        sourceTaskListWidgetId: sourceTaskListWidgetId
-    }
-}
+
 
 export function startTaskMoveInDatabase() {
     return {
@@ -473,6 +536,13 @@ export function setTaskListsHavePendingWrites(value) {
     }
 }
 
+export function selectMuiTheme(id) {
+    return {
+        type: ActionTypes.SELECT_MUI_THEME,
+        value: id,
+    }
+}
+
 export function setTasksHavePendingWrites(value) {
     return {
         type: ActionTypes.SET_TASKS_HAVE_PENDING_WRITES,
@@ -480,15 +550,22 @@ export function setTasksHavePendingWrites(value) {
     }
 }
 
-export function openTaskListJumpMenu() {
+export function setIsInducting(value) {
     return {
-        type: ActionTypes.OPEN_TASK_LIST_JUMP_MENU,
+        type: ActionTypes.SET_IS_INDUCTING,
+        value: value,
     }
 }
 
-export function closeTaskListJumpMenu() {
+export function openJumpMenu() {
     return {
-        type: ActionTypes.CLOSE_TASK_LIST_JUMP_MENU,
+        type: ActionTypes.OPEN_JUMP_MENU
+    }
+}
+
+export function closeJumpMenu() {
+    return {
+        type: ActionTypes.CLOSE_JUMP_MENU
     }
 }
 
@@ -517,6 +594,13 @@ export function receiveIncompletedLocalTasks(value) {
     return {
         type: ActionTypes.RECEIVE_INCOMPLETED_LOCAL_TASKS,
         value: value,
+    }
+}
+
+export function setConfirmationDialog(isOpen, title, text, affirmativeButtonText, negativeButtonText, onAffirmative, onNegative) {
+    return {
+        type: ActionTypes.SET_CONFIRMATION_DIALOG,
+        value: { isOpen, title, text, affirmativeButtonText, negativeButtonText, onAffirmative, onNegative }
     }
 }
 
@@ -609,16 +693,24 @@ export function setSelectedProjectLayoutType(layoutType) {
     }
 }
 
-// Private Actions.
-// Should only be dispatched by moveTaskAsync(), as moveTaskAsync() gets the movingTaskId from the State. Calling this from elsewhere
-// could create a race Condition.
-function setOpenTaskInspectorId(taskId) {
+export function receiveLocalMuiThemes(themes) {
     return {
-        type: ActionTypes.SET_OPEN_TASK_INSPECTOR_ID,
-        value: taskId,
+        type: ActionTypes.RECEIVE_LOCAL_MUI_THEMES,
+        value: themes,
     }
 }
 
+// Private Actions.
+function startTaskMove(movingTaskId, sourceTaskListWidgetId) {
+    return {
+        type: ActionTypes.START_TASK_MOVE,
+        movingTaskId: movingTaskId,
+        sourceTaskListWidgetId: sourceTaskListWidgetId
+    }
+}
+
+// Should only be dispatched by moveTaskAsync(), as moveTaskAsync() gets the movingTaskId from the State. Calling this from elsewhere
+// could create a race Condition.
 function endTaskMove(movingTaskId, destinationTaskListWidgetId) {
     return {
         type: ActionTypes.END_TASK_MOVE,
@@ -627,15 +719,268 @@ function endTaskMove(movingTaskId, destinationTaskListWidgetId) {
     }
 }
 
+function setOpenTaskInspectorId(taskId) {
+    return {
+        type: ActionTypes.SET_OPEN_TASK_INSPECTOR_ID,
+        value: taskId,
+    }
+}
+
 // Thunks
-export function moveTaskListToProjectAsync(sourceProjectId, targetProjectId, taskListWidgetId) {
+export function bumpVersionNumberToCurrentAsync() {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let generalConfig = { ...getState().generalConfig };
+
+        generalConfig.appVersion = HANDBALL_VERSION;
+
+        dispatch(setGeneralConfigAsync(generalConfig));
+    }
+}
+
+
+export function persistMuiThemeSelection() {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let generalConfig = {...getState().generalConfig};
+
+        generalConfig.selectedMuiThemeId = getState().selectedMuiThemeId;
+
+        dispatch(setGeneralConfigAsync(generalConfig));
+    }
+}
+
+export function updateMuiThemeAsync(id, newTheme) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let muiThemes = [...getState().muiThemes];
+        let muiTheme = muiThemes.find(item => {
+            return item.id === id;
+        })
+
+        if (muiTheme === undefined) {
+            return;
+        }
+
+        muiTheme.theme = newTheme;
+
+        try {
+            // Add to IndexedDB
+            await getDexie().muiThemes.update(id, { theme: newTheme });
+            
+            // Add to State
+            dispatch(receiveLocalMuiThemes(muiThemes));
+        }
+
+        catch(error) {
+            console.error(error);
+        }
+    }
+}
+
+export function renameMuiThemeAsync(id) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let muiThemes = [...getState().muiThemes]
+        let muiTheme = muiThemes.find(item => {
+            return item.id === id;
+        })
+
+        if (muiTheme === undefined) {
+            return;
+        }
+
+        if (muiTheme.isInbuilt) {
+            postGeneralSnackbar(dispatch, getState(), 'information', "You cannot rename a built in theme", 4000, '');
+            return;
+        }
+
+        let dialogResult = await postTextInputDialog(dispatch, getState(), 'Name', muiTheme.name, 'Rename theme');
+
+        if (dialogResult.result === 'cancel') {
+            return;
+        }
+
+        let newName = dialogResult.value;
+        muiTheme.name = newName;
+
+        try {
+            // Update DB
+            await getDexie().muiThemes.update(id, { name: newName });
+
+            // Update State.
+            dispatch(receiveLocalMuiThemes(muiThemes));
+        }
+        
+        catch(error) {
+            postGeneralSnackbar(
+                dispatch,
+                getState(),
+                'error',
+                "An error occured whilst renaming theme",
+                0,
+                'Dismiss'
+            )
+            console.error(error);
+        }
+    }
+}
+
+export function removeMuiThemeAsync(id) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let muiThemes = [...getState().muiThemes]
+        let muiTheme = muiThemes.find(item => {
+            return item.id === id;
+        })
+
+        let muiThemeIndex = muiThemes.findIndex(item => {
+            return item.id === id;
+        })
+
+        if (muiTheme === undefined || muiTheme.isInbuilt === true) {
+            return;
+        }
+
+        let themeName = getState().muiThemes.find(item => {
+            return item.id === id;
+        }).name;
+
+        let dialogResult = await postConfirmationDialog(
+            dispatch,
+            getState(),
+            `Are you sure you want to delete ${themeName}`,
+            `Delete Theme`,
+            'Delete',
+            'Cancel'
+        );
+
+        if (dialogResult.result === 'negative') {
+            return;
+        }
+
+        dispatch(selectMuiTheme('default'));
+
+        muiThemes.splice(muiThemeIndex, 1);
+
+        try {
+            await getDexie().muiThemes.delete(id);
+            dispatch(receiveLocalMuiThemes(muiThemes));
+        }
+
+        catch(error) {
+            postGeneralSnackbar(
+                dispatch,
+                getState(),
+                'error',
+                'An error occured whilst deleting theme',
+                0,
+                'Dismiss'
+            )
+            console.error(error);
+        }
+    }
+}
+
+export function createNewMuiThemeAsync() {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let dialogResult = await postTextInputDialog(dispatch, getState(), 'Name', '', 'Create new Theme');
+        if (dialogResult.result === 'cancel') {
+            return;
+        }
+
+        let themeName = dialogResult.value;
+        let muiThemes = [...getState().muiThemes]
+        let selectedMuiThemeId = getState().selectedMuiThemeId;
+        let selectedMuiThemeEntity = muiThemes.find(item => {
+            return item.id === selectedMuiThemeId;
+        })
+
+        let newTheme = JSON.parse(JSON.stringify(selectedMuiThemeEntity)); // Deep clone as createMuiTheme augments the color's in place.
+        newTheme.id = GetUid();
+        newTheme.name = themeName;
+        newTheme.isInbuilt = false;
+
+        // Add to IndexedDB
+        try {
+            await getDexie().muiThemes.add(newTheme)
+
+            // Add to State.
+            muiThemes.push(newTheme);
+            dispatch(receiveLocalMuiThemes(muiThemes));
+            dispatch(selectMuiTheme(newTheme.id));
+        }
+        
+        catch(error) {
+            postGeneralSnackbar(
+                dispatch,
+                getState(),
+                'error',
+                "An error occured whilst creating new Theme",
+                0,
+                'Dismiss'
+            )
+            console.error(error);
+        }
+    }
+}
+
+export function getLocalMuiThemes() {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        try {
+            let muiThemes = await getDexie().muiThemes.toArray();
+            dispatch(receiveLocalMuiThemes(muiThemes));
+        }
+
+        catch(error) {
+            postGeneralSnackbar(
+                dispatch,
+                getState(),
+                'error',
+                "An error occured whilst retrieving Local themes",
+                0,
+                "Dismiss"
+            )
+            console.error(error);
+        }
+    }
+}
+export function startTaskMoveAsync(taskId, sourceTaskListId) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        postGeneralSnackbar(dispatch, getState(), 'information', 'Touch the desired list for the Task', 4000, '');
+        dispatch(startTaskMove(taskId, sourceTaskListId));
+    }   
+}
+
+export function moveTaskListToProjectAsync(taskListId, sourceProjectId) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let otherProjects = getState().projects.filter( item => {
+            return item.uid !== sourceProjectId;
+        })
+
+        let items = otherProjects.map(item => {
+            return {
+                primaryText: item.projectName,
+                value: item.uid,
+            }
+        })
+
+        let dialogResult = await postItemSelectDialog(dispatch,
+            getState(),
+            'Move List',
+            'Choose project',
+            items,
+            "Move",
+            "Cancel"
+        )
+        
+        if (dialogResult.result === 'negative') {
+            return;
+        }
+
+        let targetProjectId = dialogResult.value;
+
         if (!isProjectRemote(getState, sourceProjectId) && !isProjectRemote(getState, targetProjectId) ) {
             // Both Projects are Local.
             var batch = new FirestoreBatchPaginator(getFirestore());
 
             // Move Tasks.
-            var taskIds = collectTaskListRelatedTaskIds(getState().tasks, taskListWidgetId);
+            var taskIds = collectTaskListRelatedTaskIds(getState().tasks, taskListId);
 
             taskIds.forEach( id => {
                 var ref = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc(id);
@@ -643,7 +988,7 @@ export function moveTaskListToProjectAsync(sourceProjectId, targetProjectId, tas
             })
 
             // Move Task List.
-            var taskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc(taskListWidgetId);
+            var taskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc(taskListId);
 
             batch.update(taskListRef, { project: targetProjectId });
 
@@ -651,16 +996,16 @@ export function moveTaskListToProjectAsync(sourceProjectId, targetProjectId, tas
             var currentLayouts = getState().projectLayoutsMap[sourceProjectId][sourceProjectId].layouts;
             if (currentLayouts) {
                 var filteredLayouts = currentLayouts.filter(item => {
-                    return item.i !== taskListWidgetId;
+                    return item.i !== taskListId;
                 })
 
                 dispatch(updateProjectLayoutAsync(filteredLayouts, currentLayouts, sourceProjectId));
-                addProjectLayoutEntriesToBatch(batch, targetProjectId, taskListWidgetId, getFirestore, getState);
+                addProjectLayoutEntriesToBatch(batch, targetProjectId, taskListId, getFirestore, getState);
             }
 
             var payload = {
                 targetProjectId: targetProjectId,
-                taskListWidgetId: taskListWidgetId,
+                taskListWidgetId: taskListId,
                 sourceTasksRefPath: getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).path,
             }
 
@@ -681,10 +1026,10 @@ export function moveTaskListToProjectAsync(sourceProjectId, targetProjectId, tas
             // One or both projects are Remote.
             var batch = new FirestoreBatchPaginator(getFirestore());
             
-            var refs = buildTaskListMoveRefs(sourceProjectId, targetProjectId, taskListWidgetId, getFirestore, getState);
+            var refs = buildTaskListMoveRefs(sourceProjectId, targetProjectId, taskListId, getFirestore, getState);
 
             // Move Tasks
-            var tasks = collectTaskListRelatedTasks(getState().tasks, taskListWidgetId);
+            var tasks = collectTaskListRelatedTasks(getState().tasks, taskListId);
 
             tasks.forEach(task => {
                 batch.set(refs.target.tasks.doc(task.uid), { ...task, project: targetProjectId });
@@ -692,20 +1037,20 @@ export function moveTaskListToProjectAsync(sourceProjectId, targetProjectId, tas
             })
 
             // Move Task List.
-            var taskList = getState().taskLists.find(item => { return item.uid === taskListWidgetId });
+            var taskList = getState().taskLists.find(item => { return item.uid === taskListId });
 
             batch.set(refs.target.taskList, {...taskList, project: targetProjectId });
             batch.update(refs.source.taskList, { isMoving: true });
 
             // Move Project Layouts.
-            addProjectLayoutMovesToBatch(batch, sourceProjectId, targetProjectId, taskListWidgetId, getFirestore, getState);
+            addProjectLayoutMovesToBatch(batch, sourceProjectId, targetProjectId, taskListId, getFirestore, getState);
 
             // Create a Cleanup Job for the Server.
             var payload = {
                 sourceProjectId: sourceProjectId,
                 targetProjectId: targetProjectId,
-                taskListWidgetId: taskListWidgetId,
-                taskIds: collectTaskListRelatedTaskIds(getState().tasks, taskListWidgetId),
+                taskListWidgetId: taskListId,
+                taskIds: collectTaskListRelatedTaskIds(getState().tasks, taskListId),
                 targetTasksRefPath: refs.target.tasks.path,
                 targetTaskListRefPath: refs.target.taskList.path,
                 sourceTasksRefPath: refs.source.tasks.path,
@@ -757,35 +1102,34 @@ export function updateProjectLayoutTypeAsync(projectLayoutType) {
     }
 }
 
-
-export function openTaskInspectorAsync(taskId) {
+export function openTaskInspector(taskId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setOpenTaskInspectorId(taskId));
-        dispatch(getTaskCommentsAsync(taskId));
     }
 }
 
 export function closeTaskInspectorAsync() {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         // Save some Info before it is destroyed by the closeTaskInfo() Action.
-        var openTaskInspectorId = getState().openTaskInspectorId;
-        var taskComments = [...getState().taskComments];
+        let openTaskInspectorId = getState().openTaskInspectorId;
+        let openTaskInspectorEntity = {...getState().openTaskInspectorEntity}
+        let allTaskComments = [...openTaskInspectorEntity.commentPreview, ...getState().taskComments];
+        let newCommentPreview = [...openTaskInspectorEntity.commentPreview];
+        let selectedProjectId = getState().selectedProjectId;
+        let taskRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS)
+        .doc(openTaskInspectorId);
 
         dispatch(setOpenTaskInspectorId(-1));
         dispatch(setIsAllTaskCommentsFetched(false));
 
-        // Add User ID to Seenby of any Unseen Task Comments.
-        var selectedProjectId = getState().selectedProjectId;
+        // Add User ID to Seenby of any Unseen Task Comments or Comment Preview.
         if (isProjectRemote(getState, selectedProjectId) === true) {
             var batch = getFirestore().batch();
             var unseenCommentsFound = false;
 
-            taskComments.forEach(comment => {
-                var isUnseen = !comment.seenBy.some(id => {
-                    return id === getUserUid();
-                })
-
-                if (isUnseen === true) {
+            allTaskComments.forEach(comment => {
+                // Comment is Unseen.
+                if (!comment.seenBy.includes(getUserUid())) {
                     unseenCommentsFound = true;
 
                     var ref = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS)
@@ -794,9 +1138,18 @@ export function closeTaskInspectorAsync() {
                     var newSeenBy = comment.seenBy;
                     newSeenBy.push(getUserUid());
 
+                    // Update Comment Reference.
                     batch.update(ref, { seenBy: newSeenBy });
+
+                    // Update Comment Preview.
+                    let index = newCommentPreview.findIndex(item => { item.uid === comment.uid});
+                    if (index !== -1 && newCommentPreview[index].seenBy.includes(getUserUid()) === false) {
+                        newCommentPreview[index].seenBy.push(getUserUid());
+                    }
                 }
             })
+
+            batch.update(taskRef, { commentPreview: newCommentPreview });
 
             batch.commit().then(() => {
                 // Success
@@ -806,9 +1159,6 @@ export function closeTaskInspectorAsync() {
 
             // Update Task.unseenTaskCommentMembers if unseen Comments have been found.
             if (unseenCommentsFound === true) {
-                var taskRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS)
-                    .doc(openTaskInspectorId);
-
                 taskRef.get().then(doc => {
                     if (doc.exists) {
                         // Filter out current User from unseenCommentMembers.
@@ -832,30 +1182,51 @@ export function closeTaskInspectorAsync() {
                     handleFirebaseSnapshotError(error, getState(), dispatch);
                 })
             }
+
+            // Update Comment Preview if it contains unseenComments.
+            let previewHasUnseenComments = openTaskInspectorEntity.commentPreview.some(comment => {
+                return comment.seenBy.includes(getUserUid());
+            })
+
+            if (previewHasUnseenComments) {
+                let newCommentPreview = [...openTaskInspectorEntity.commentPreview];
+                newCommentPreview.forEach(item => {
+                    if (item.seenBy.includes(getUserUid()) === false) {
+                        item.seenBy.push(getUserUid());
+                    }
+                })
+
+                taskRef.update({ commentPreview: newCommentPreview }).then(() => {
+
+                }).catch(error => {
+                    handleFirebaseUpdateError(error, getState(), dispatch)
+                })
+            }
         }
     }
 }
 
 export function getTaskCommentsAsync(taskId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        var selectedProjectId = getState().selectedProjectId;
-            dispatch(startTaskCommentsGet());
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        dispatch(startTaskCommentsGet());
 
-            var ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS)
+        let ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS)
             .orderBy("timestamp", "desc").limit(TaskCommentQueryLimit + 1);
 
-            ref.get().then( snapshot => {
-                handleTaskCommentsSnapshot("initial", snapshot, dispatch);
-            }).catch(error => {
-                handleFirebaseSnapshotError(error, getState(), dispatch, getState );
-            })
+        try {
+            let snapshot = await ref.get();
+            handleTaskCommentsSnapshot("initial", snapshot, dispatch);
+        }
+
+        catch (error) {
+            handleFirebaseSnapshotError(error, getState(), dispatch, getState);
+        }
     }
 }
 
 export function paginateTaskCommentsAsync(taskId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (getState().taskComments.length > 0) {
-            var selectedProjectId = getState().selectedProjectId;
             var previousQueryLastDoc = getState().taskComments[getState().taskComments.length - 1].doc;
 
             if (previousQueryLastDoc !== undefined) {
@@ -864,13 +1235,15 @@ export function paginateTaskCommentsAsync(taskId) {
                 var ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS)
                     .orderBy("timestamp", "desc").startAfter(previousQueryLastDoc).limit(TaskCommentQueryLimit + 1);
 
-                ref.get().then(snapshot => {
+                try {
+                    let snapshot = await ref.get();
                     handleTaskCommentsSnapshot("pagination", snapshot, dispatch, getState);
                     dispatch(setIsTaskCommentsPaginating(false));
+                }
 
-                }).catch(error => {
+                catch(error) {
                     handleFirebaseSnapshotError(error, getState(), dispatch, getState);
-                })
+                }
             }
         }
 
@@ -878,38 +1251,35 @@ export function paginateTaskCommentsAsync(taskId) {
 }
 
 export function deleteTaskCommentAsync(taskId, commentId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        var selectedProjectId = getState().selectedProjectId;
-
-        var ref = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS).doc(commentId);
-
-        ref.delete().then(() => {
-            // Success
-        }).catch(error => {
-            handleFirebaseUpdateError(error, getState(), dispatch);
-        })
-
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         // Update State.
-        var newTaskComments = getState().taskComments.filter( item => {
+        var newTaskComments = getState().taskComments.filter(item => {
             return item.uid !== commentId;
         })
 
         dispatch(receiveTaskComments(newTaskComments));
+
+        let batch = getFirestore().batch();
+        let taskRef = getTaskRef(getFirestore, getState, taskId);
+        let commentRef = taskRef.collection(TASKCOMMENTS).doc(commentId);
+
+        batch.update(taskRef, { commentPreview: generateNewCommentPreview(newTaskComments)});
+        batch.delete(commentRef)
+        try {
+            await batch.commit();
+        }
+
+        catch(error) {
+            handleFirebaseUpdateError(error, getState(), dispatch);
+        }
     }
 }
 
 function handleTaskCommentsSnapshot(type, snapshot, dispatch, getState) {
-
-        // Determine based on the Snapshot Size if the Query has retreived all of the Task Comments.
-        // Problem is however that if the Query Size matches the TaskCommentsQueryLimit, there are edge cases where
-        // there could be no more Commments. As in the total size of the Comments collection is evenly divisable by the
-        // TaskCOmmentsQueryLimit.. You could try actually fetching the TaskCommentsQueryLimit + 1 and using the extra one
-        // to determine if the Query is finished whilst still only showing the TaskCommentsQueryLimit to the user.
-
         var taskComments = [];
         var counter = 0;
         snapshot.forEach(doc => {
-            // Take only enough Comments to equalt TaskCommentQueryLimit. comment[TaskCommentQueryLimit + 1] is only used to
+            // Take only enough Comments to equal TaskCommentQueryLimit. comment[TaskCommentQueryLimit + 1] is only used to
             // determine if Pagination is completed.
             if (counter < TaskCommentQueryLimit) {
                 var comment = {
@@ -937,45 +1307,54 @@ function handleTaskCommentsSnapshot(type, snapshot, dispatch, getState) {
             var mergedTaskComments = [...getState().taskComments, ...taskComments ];
 
             dispatch(receiveTaskComments(mergedTaskComments));
-        }
-        
-        
+        }  
 }
 
+function generateNewCommentPreview(fullComments) {
+    let comments = [...fullComments];
+    let startIndex = 0;
+    let endIndex = TaskCommentPreviewLimit;
+
+    let previewComments = comments.slice(startIndex, endIndex);
+
+    // Strip out doc objects and add this user to Seenby.
+    return previewComments.map( item => {
+        let returnItem = { ...item };
+        delete returnItem.doc; // Delete Doc reference.
+
+        if (returnItem.seenBy.find( (id) => { return id === getUserUid() }) === undefined) {
+            returnItem.seenBy.push(getUserUid());
+        }
+
+        return returnItem;
+    })
+}
+
+
 export function postNewCommentAsync(taskId, value) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         var selectedProjectId = getState().selectedProjectId;
 
-        var mentions = [];
-        var created = Moment().toISOString();
-        var createdBy = getUserUid();
-        var displayName = getState().displayName;
-        var seenBy = [createdBy];
-        var newCommentRef = getTaskRef(getFirestore, getState, taskId).collection(TASKCOMMENTS).doc();
+        let mentions = [];
+        let created = Moment().toISOString();
+        let createdBy = getUserUid();
+        let displayName = getState().displayName;
+        let seenBy = [createdBy];
+        let taskRef = getTaskRef(getFirestore, getState, taskId);
+        let newCommentRef = taskRef.collection(TASKCOMMENTS).doc();
 
-        var taskComment = TaskCommentFactory(newCommentRef.id, value, mentions, created, createdBy, seenBy, displayName);
-
-        newCommentRef.set(taskComment).then(() => {
-            // Success. Update newly posted comment's isSynced flag.
-            var commentIndex = getState().taskComments.findIndex(item => {
-                return item.uid === newCommentRef.id;
-            })
-
-            if (commentIndex !== -1) {
-                var comments = [...getState().taskComments];
-                comments[commentIndex].isSynced = true;
-
-                dispatch(receiveTaskComments(comments));
-            }
-
-        }).catch(error => {
-            handleFirebaseUpdateError(error, getState(), dispatch);
-        })
+        let taskComment = TaskCommentFactory(newCommentRef.id, value, mentions, created, createdBy, seenBy, displayName);
+        
 
         // Add to State.
         var existingComments = [...getState().taskComments];
-        existingComments.push({ isSynced: false, ...taskComment });
+        existingComments.unshift({ isSynced: false, ...taskComment });
         dispatch(receiveTaskComments(existingComments));
+
+        // Add to Database.
+        let batch = getFirestore().batch();
+        batch.set(newCommentRef, taskComment); // Comment into Comment Collection.
+        batch.update(taskRef, { commentPreview: generateNewCommentPreview(existingComments) }); // Comment into Comment Preview collection.
 
         // Add a Hashtable to Task to indicate the User ID's that have unseen Comments.
         // Also add a flag to indicate this Task may have Comments. This helps the Migration Functions.
@@ -988,15 +1367,43 @@ export function postNewCommentAsync(taskId, value) {
             unseenMembers[item.userId] = "0";
         })
 
-        var taskRef = getTaskRef(getFirestore, getState, taskId);
-        taskRef.update({
+        batch.update(taskRef, {
             unseenTaskCommentMembers: unseenMembers,
             mightHaveTaskComments: true,
-        }).then(() => {
-            // Success
-        }).catch(error => {
+        });
+
+        try {
+            await batch.commit();
+            // Success. Update newly posted comment's isSynced flag.
+            var commentIndex = getState().taskComments.findIndex(item => {
+                return item.uid === newCommentRef.id;
+            })
+    
+            if (commentIndex !== -1) {
+                var comments = [...getState().taskComments];
+                comments[commentIndex].isSynced = true;
+    
+                dispatch(receiveTaskComments(comments));
+            }
+        }
+
+        catch(error) {
             handleFirebaseUpdateError(error, getState(), dispatch);
-        })
+        }
+    }
+}
+
+export function manuallyRenewChecklistAsync(taskListId) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let taskList = extractTaskList(taskListId, getState().taskLists);
+        if (taskList === undefined) {
+            return;
+        }
+
+        let projectId = taskList.project;
+        let isRemote = isProjectRemote(getState, projectId);
+
+        dispatch(renewChecklistAsync(taskList, isRemote, projectId, true));
     }
 }
 
@@ -1120,8 +1527,6 @@ export function updateTaskNoteAsync(newValue, oldValue, taskId) {
 
 export function updateTaskAssignedToAsync(newUserId, oldUserId, taskId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setOpenTaskInspectorId(-1));
-
         if (newUserId !== oldUserId) {
             var taskRef = getTaskRef(getFirestore, getState, taskId);
 
@@ -1142,18 +1547,18 @@ export function sendPasswordResetEmailAsync() {
         var email = getState().userEmail;
 
         getAuth().sendPasswordResetEmail(email).then( () => {
-            dispatch(postSnackbarMessage("Password reset email sent.", true, 'affirmative-notification'));
+            postGeneralSnackbar(dispatch, getState(), 'information', 'Password reset email sent', 4000, '');
         }).catch(error => {
-            dispatch(postSnackbarMessage("An error occured: " + error.message, false, 'error'));
+            postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
         })
     }
 }
 
 export function registerNewUserAsync(email, password, displayName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
 
         if (displayName === "") {
-            dispatch(postSnackbarMessage("Please enter a display name", true, 'negative-notification'));
+            postGeneralSnackbar(dispatch, getState(), 'information', 'Please enter a Display Name', 4000, '');
         }
 
         else {
@@ -1166,22 +1571,23 @@ export function registerNewUserAsync(email, password, displayName) {
             // issues.
             newUser = { email: parsedEmail, displayName: displayName };
 
-            getAuth().createUserWithEmailAndPassword(parsedEmail, password).then(() => {
-                // Push their desired Display name to Authentication.
-                getAuth().currentUser.updateProfile({ displayName: displayName }).then( () => {
+            try {
+                await getAuth().createUserWithEmailAndPassword(parsedEmail, password)
+                try {
+                    // Push their desired Display name to Authentication.
+                    await getAuth().currentUser.updateProfile({ displayName: displayName })
                     dispatch(setDisplayName(displayName));
-
-                }).catch(error => {
+                }
+                catch (error) {
                     handleFirebaseUpdateError(error, getState(), dispatch);
                     newUser = null;
-                })
+                }
+            }
 
-
-            }).catch(error => {
-                handleAuthError(dispatch, error);
+            catch (error) {
+                handleAuthError(dispatch, getState(), error);
                 dispatch(setIsLoggingInFlag(false));
-
-            })
+            }   
         }
     }
 }
@@ -1210,7 +1616,7 @@ export function acceptProjectInviteAsync(projectId) {
 
         }).catch(error => {
             var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`; 
-            dispatch(postSnackbarMessage(message, true, 'infomation' ));
+            postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
             removeUpdatingInviteId(dispatch, getState, projectId);
         })
     }
@@ -1224,7 +1630,7 @@ export function denyProjectInviteAsync(projectId) {
         var denyProjectInvite = getFunctions().httpsCallable('denyProjectInvite');
         denyProjectInvite({projectId: projectId}).then( result => {
             if (result.data.status === 'error') {
-                dispatch(postSnackbarMessage(result.data.message, false, 'error'));
+                postGeneralSnackbar(dispatch, getState(), 'error', result.data.message, 0, 'Dismiss');
                 removeUpdatingInviteId(dispatch, getState, projectId);
             }
 
@@ -1239,7 +1645,7 @@ export function denyProjectInviteAsync(projectId) {
             }
         }).catch(error => {
             var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`; 
-            dispatch(postSnackbarMessage(message, true, 'infomation'));
+            postGeneralSnackbar(dispatch, getState(), 'error', message, 7000, '');
             removeUpdatingInviteId(dispatch, getState, projectId);
         })
     }
@@ -1423,43 +1829,56 @@ export function unsubscribeFromRemoteProjectAsync(projectId) {
     }
 }
 
-export function migrateProjectBackToLocalAsync(projectId, projectName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        // Extract project from State before you unsubscribe from Database.
-        var project = extractProject(getState, projectId);
+export function migrateProjectBackToLocalAsync(projectId, preCondition) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let confirmationText = 'This will remove all other users from the project, and make it available only to yourself, are you sure you want to continue?';
+        let dialogResult = await postConfirmationDialog(dispatch, getState(), confirmationText, 'Make project Personal', 'Continue', 'Cancel');
 
-        dispatch(setIsShareMenuWaiting(true));
-        dispatch(setShareMenuMessage("Migrating project."))
-        dispatch(setShowCompletedTasksAsync(false));
-        dispatch(selectProject(-1));
+        if (dialogResult.result === 'affirmative') {
+            // Extract project from State before you unsubscribe from Database.
+            var project = extractProject(getState, projectId);
 
-        var kickAllUsersFromProject = getFunctions().httpsCallable('kickAllUsersFromProject');
-        kickAllUsersFromProject({projectId: projectId}).then(result => {
-            if (result.data.status === 'complete') {
-                dispatch(unsubscribeFromDatabaseAsync());
+            dispatch(setIsShareMenuWaiting(true));
+            dispatch(setShareMenuMessage("Migrating project."))
+            dispatch(setShowCompletedTasksAsync(false));
+            dispatch(selectProject(-1));
 
-                moveProjectToLocalLocationAsync(getState, getFirestore, projectId, project).then( () => {
-                    dispatch(subscribeToDatabaseAsync());
+            try {
+                let kickAllUsersFromProject = getFunctions().httpsCallable('kickAllUsersFromProject');
+
+                let result = await kickAllUsersFromProject({ projectId: projectId });
+                if (result.data.status === 'complete') {
+                    dispatch(unsubscribeFromDatabaseAsync());
+
+                    try {
+                        await moveProjectToLocalLocationAsync(getState, getFirestore, projectId, project)
+                        dispatch(subscribeToDatabaseAsync());
+                        dispatch(setIsShareMenuWaiting(false));
+                        dispatch(setShareMenuMessage(""));
+                    }
+
+                    catch (migrationError) {
+                        let message = 'An error occured whilst migrating project';
+                        postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
+                        dispatch(setIsShareMenuWaiting(false));
+                        dispatch(setShareMenuMessage(""));
+                    }
+                }
+
+                if (result.data.status === 'error') {
+                    postGeneralSnackbar(dispatch, getState(), 'error', result.data.message, 0, 'Dismiss');
                     dispatch(setIsShareMenuWaiting(false));
                     dispatch(setShareMenuMessage(""));
-                }).catch(error => {
-                    dispatch(postSnackbarMessage(error.message, false, 'error'));
-                    dispatch(setIsShareMenuWaiting(false));
-                    dispatch(setShareMenuMessage(""));
-                })
+                }
             }
 
-            if (result.data.status === 'error') {
-                dispatch(postSnackbarMessage(result.data.message, false, 'error'));
+            catch (error) {
+                var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`;
+                postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
                 dispatch(setIsShareMenuWaiting(false));
                 dispatch(setShareMenuMessage(""));
             }
-        }).catch(error => {
-            var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`;
-            dispatch(postSnackbarMessage(message, false, 'infomation'));
-            dispatch(setIsShareMenuWaiting(false));
-            dispatch(setShareMenuMessage(""));
-        })
+        }
     }
 }
 
@@ -1550,43 +1969,51 @@ function moveProjectToLocalLocationAsync(getState, getFirestore, projectId, curr
     })  
 }
 
-export function inviteUserToProjectAsync(projectName, targetEmail, sourceEmail, sourceDisplayName, projectId, role) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+export function inviteUserToProjectAsync(targetEmail, projectId) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let projectName = getState().projects.find( item => { return item.uid === projectId }).projectName;
+        let sourceDisplayName = getState().displayName;
+        let sourceEmail = getState().userEmail;
+        let role = 'member';
+
         dispatch(setIsShareMenuWaiting(true));
         dispatch(setShareMenuMessage('Searching for User...'));
 
         var slowMessageTimer = setTimeout(() => {
-            var message = "Hang tight!\nThe servers are waking up. Subsequent operations will complete faster."
+            var message = "Hang tight!\n The servers are waking up."
             dispatch(setShareMenuSubMessage(message));
         }, 5000)
 
         var getRemoteUserData = getFunctions().httpsCallable('getRemoteUserData');
-        getRemoteUserData({ targetEmail: targetEmail }).then(result => {
-            if (result.data.status === 'user found') {
-                // User Found.
-                var userData = result.data.userData;
 
-                var inviteData = {
-                    projectName: projectName,
-                    sourceEmail: sourceEmail,
-                    sourceDisplayName: sourceDisplayName,
-                    targetDisplayName: userData.displayName,
-                    targetEmail: userData.email,
-                    projectId: projectId,
-                    targetUserId: userData.userId,
-                    sourceUserId: getUserUid(),
-                    role: role,
-                }
+        try {
+            let result = await getRemoteUserData({ targetEmail: targetEmail })
+                if (result.data.status === 'user found') {
+                    // User Found.
+                    var userData = result.data.userData;
+    
+                    var inviteData = {
+                        projectName: projectName,
+                        sourceEmail: sourceEmail,
+                        sourceDisplayName: sourceDisplayName,
+                        targetDisplayName: userData.displayName,
+                        targetEmail: userData.email,
+                        projectId: projectId,
+                        targetUserId: userData.userId,
+                        sourceUserId: getUserUid(),
+                        role: role,
+                    }
+    
+                    // If the project isn't Remote already it needs to be Moved. Promise will resolve Imediately if no migration
+                    // is required, otherwise it will resolve when migration is complete.
+                    await maybeMigrateProjectAsync(dispatch, getFirestore, getState, projectId);
 
-                // If the project isn't Remote already it needs to be Moved. Promise will resolve Imediately if no migration
-                // is required, otherwise it will resolve when migration is complete.
-                maybeMigrateProjectAsync(dispatch, getFirestore, getState, projectId).then(() => {
                     dispatch(setShareMenuMessage('Sending invite.'));
 
                     var sendProjectInvite = getFunctions().httpsCallable('sendProjectInvite');
                     sendProjectInvite(inviteData).then(result => {
                         if (result.data.status === 'complete') {
-                            dispatch(postSnackbarMessage("Invite sent.", true, 'affirmative-notification'));
+                            postGeneralSnackbar(dispatch, getState(), 'information', "Invite sent", 4000, '');
                             dispatch(setIsShareMenuWaiting(false));
                             dispatch(setShareMenuMessage(""));
                             dispatch(setShareMenuSubMessage(""));
@@ -1595,65 +2022,127 @@ export function inviteUserToProjectAsync(projectName, targetEmail, sourceEmail, 
                         }
 
                         else {
-                            dispatch(postSnackbarMessage(result.data.error, false, 'error'));
+                            postGeneralSnackbar(dispatch, getState(), 'error', result.data.error, 4000, '');
                             dispatch(setIsShareMenuWaiting(false));
                             dispatch(setShareMenuMessage(""));
                             dispatch(setShareMenuSubMessage(""));
                             clearTimeout(slowMessageTimer);
                         }
                     })
-                })
-            }
-
-            else {
-                // User not Found.
-                dispatch(postSnackbarMessage('User not Found.', true, 'negative-notification'));
-                dispatch(setIsShareMenuWaiting(false));
-                dispatch(setShareMenuMessage(""));
-                dispatch(setShareMenuSubMessage(""));
-                clearTimeout(slowMessageTimer);
-            }
-        }).catch(error => {
+                }
+    
+                else {
+                    // User not Found.
+                    postGeneralSnackbar(dispatch, getState(), 'information', 'User not found', 4000, '');
+                    dispatch(setIsShareMenuWaiting(false));
+                    dispatch(setShareMenuMessage(""));
+                    dispatch(setShareMenuSubMessage(""));
+                    clearTimeout(slowMessageTimer);
+                }
+        }
+    
+        catch (error) {
             dispatch(setIsShareMenuWaiting(false));
             dispatch(setShareMenuMessage(''));
+            dispatch(setShareMenuSubMessage(''));
             var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`;
-            dispatch(postSnackbarMessage(message, false, 'infomation'));
-            dispatch(setShareMenuMessage(""));
-            dispatch(setShareMenuSubMessage(""));
+            postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
             clearTimeout(slowMessageTimer);
-        })
+        }
 
     }
 }
 
 export function updateMemberRoleAsync(userId, projectId, newRole) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        if (userId === getUserUid()) {
+            let message = 'If you demote yourself, you will need to be promoted by another owner. Are you sure you want to continue?'
+            let dialogResult = await postConfirmationDialog(dispatch, getState(), message, 'Demote yourself', 'Continue', 'Cancel' );
+            if (dialogResult.result === 'negative') {
+                return;
+            }
+        }
+
         addUpdatingUserId(dispatch, getState, userId, projectId);
 
-        var memberRef = getFirestore().collection(REMOTES).doc(projectId).collection(MEMBERS).doc(userId);
-        memberRef.update({ role: newRole }).then( () => {
+        try {
+            let memberRef = getFirestore().collection(REMOTES).doc(projectId).collection(MEMBERS).doc(userId);
+            await memberRef.update({ role: newRole })
             removeUpdatingUserId(dispatch, getState, userId, projectId);
-        }).catch(error => {
+        }
+
+        catch(error) {
             handleFirebaseUpdateError(error, getState(), dispatch);
             removeUpdatingUserId(dispatch, getState, userId, projectId);
-        })
+        }
+    }
+}
+
+export function leaveRemoteProjectAsync(projectId, userId) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let projectName = getProjectName(getState().projects, projectId);
+
+        let dialogResult = await postConfirmationDialog(
+            dispatch,
+            getState(),
+            `Are you sure you want to leave ${projectName}?`,
+            'Leave project',
+            'Leave',
+            'Cancel'
+             )
+        
+        if (dialogResult.result === 'affirmative') {
+            try {
+                var kickUserFromProject = getFunctions().httpsCallable('kickUserFromProject');
+                await kickUserFromProject({ userId: userId, projectId: projectId })
+
+                dispatch(selectProject(-1));
+                dispatch(closeShareMenu());
+                dispatch(setIsAppDrawerOpen(true));
+
+                postGeneralSnackbar(dispatch, getState(), 'information', 'Left Project', 4000, '');
+
+            }
+
+            catch (error) {
+                var message = "Something went wrong when leaving project: " + error.message;
+                postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
+            }
+        }
     }
 }
 
 
-
 export function kickUserFromProjectAsync(projectId, userId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        addUpdatingUserId(dispatch, getState, userId, projectId);
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let displayName = GetDisplayNameFromLookup(userId, getState().memberLookup);
+        let projectName = getProjectName(getState().projects, projectId);
 
-        var kickUserFromProject = getFunctions().httpsCallable('kickUserFromProject');
-        kickUserFromProject({userId: userId, projectId: projectId}).then( result => {
-            removeUpdatingUserId(dispatch, getState, userId, projectId);
-        }).catch(error => {
-            var message = "Something went wrong when kicking a user: " + error.message;
-            dispatch(postSnackbarMessage(message, false, 'error'));
-            removeUpdatingUserId(dispatch, getState, userId, projectId);
-        })
+        let dialogResult = await postConfirmationDialog(
+            dispatch,
+            getState(),
+            `Are you sure you want to remove ${displayName} from ${projectName}?`,
+            'Remove user',
+            'Remove',
+            'Cancel'
+             )
+        
+        if (dialogResult.result === 'affirmative') {
+            addUpdatingUserId(dispatch, getState, userId, projectId);
+
+            try {
+                var kickUserFromProject = getFunctions().httpsCallable('kickUserFromProject');
+                await kickUserFromProject({ userId: userId, projectId: projectId })
+                removeUpdatingUserId(dispatch, getState, userId, projectId);
+                postGeneralSnackbar(dispatch, getState(), 'information', 'User kicked', 4000, '');
+            }
+
+            catch (error) {
+                var message = "Something went wrong when kicking a user: " + error.message;
+                postGeneralSnackbar(dispatch, getState(), 'error', message, 0, 'Dismiss');
+                removeUpdatingUserId(dispatch, getState, userId, projectId);
+            }
+        }
     }
 }
 
@@ -1678,7 +2167,7 @@ function maybeMigrateProjectAsync(dispatch, getFirestore, getState, projectId) {
                 dispatch(selectProject(projectId));
                 resolve();
             }).catch(error => {
-                dispatch(postSnackbarMessage(error.message, false, 'error'));
+                postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
                 
                 reject();
             })
@@ -1784,9 +2273,8 @@ function moveProjectToRemoteLocationAsync(getFirestore, getState, projectId, cur
 
 export function attachAuthListenerAsync() {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        getAuth().onAuthStateChanged(user => {
+        getAuth().onAuthStateChanged(async user => {
             if (user) {
-
                 if (newUser !== null) {
                     // A new user has just registered.
                     clearFirstTimeBootFlag(dispatch, getState);
@@ -1800,18 +2288,23 @@ export function attachAuthListenerAsync() {
 
                     //  Make a directory listing for them.
                     var ref = getFirestore().collection(DIRECTORY).doc(newUser.email);
-                    ref.set(Object.assign({}, new DirectoryStore(newUser.email, newUser.displayName, user.uid))).then(() => {
-                        // Complete.
+                    
+                    try {
+                        await ref.set(Object.assign({}, new DirectoryStore(newUser.email, newUser.displayName, user.uid)));
                         newUser = null;
-                    }).catch(error => {
-                        var message = `Critical error while setting directory listing, please contact the developer. Error : ${error.code}
-                         ${error.message}`;
-                        dispatch(postSnackbarMessage(message, false, 'error'));
-                    });
+                    }
+
+                    catch (error) {
+                        postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
+                    }
                 }
 
                 if (getState().generalConfig.isFirstTimeBoot) {
                     clearFirstTimeBootFlag(dispatch, getState);
+                }
+
+                if (getState().isOnboarding) {
+                    dispatch(setIsOnboarding(false));
                 }
                 
                 // User is Logged in.
@@ -1866,6 +2359,7 @@ export function subscribeToDatabaseAsync() {
 
         // Project Invites (Also attaches a Value listener for future changes).
         dispatch(getInvitesAsync());
+
     }
 }
 
@@ -1917,7 +2411,7 @@ export function logOutUserAsync() {
 
         }).catch(error => {
             let message = handleAuthError(error);
-            dispatch(postSnackbarMessage(message, false, 'error'));
+            postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
 
         })
     }
@@ -1933,12 +2427,12 @@ export function logInUserAsync(email,password) {
         // Set Persistence.
         getAuth().setPersistence('local').then(() => {
             getAuth().signInWithEmailAndPassword(parsedEmail, password).catch(error => {
-                handleAuthError(dispatch, error);
+                handleAuthError(dispatch, getState(), error);
                 dispatch(setIsLoggingInFlag(false));
                 dispatch(setAuthStatusMessage("Logged out"));
             })
         }).catch(error => {
-            handleAuthError(dispatch, error);
+            handleAuthError(dispatch, getState(), error);
             dispatch(setIsLoggingInFlag(false));
             dispatch(setAuthStatusMessage("Logged Out"));
         })
@@ -1974,6 +2468,7 @@ export function getGeneralConfigAsync() {
                     syncAppToConfig(config, dispatch);
                 }
             }
+
             // If data doesn't exist in Dexie we can safely assume that the Fallback values given to the initial state
             // are still correct.
             if (getState().isStartingUp) {
@@ -2128,8 +2623,6 @@ export function getDatabaseInfoAsync() {
 
 export function updateTaskPriorityAsync(taskId, newValue, oldValue) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setOpenTaskInspectorId(-1));
-
         if (newValue !== oldValue) {
             // Determine Reference.
             var taskRef = getTaskRef(getFirestore, getState, taskId);
@@ -2150,9 +2643,9 @@ export function updateTaskPriorityAsync(taskId, newValue, oldValue) {
     }
 }
 
-export function updateTaskDueDateAsync(taskId, newDate, oldDate) {
+export function updateTaskDueDateAsync(taskId, newMoment, oldDate) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setOpenTaskInspectorId(-1));
+        let newDate = newMoment === null ? "" : newMoment.toISOString(); 
 
         if (newDate !== oldDate) {
             // Update Firestore.
@@ -2173,6 +2666,21 @@ export function updateTaskDueDateAsync(taskId, newDate, oldDate) {
     }
 }
 
+export function updateChecklistSettingsAsync(taskListId, newValue) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let taskList = extractTaskList(taskListId, getState().taskLists);
+        if (taskList === undefined) {
+            return;
+        }
+
+        let existingSettings = { ...taskList.settings };
+        existingSettings.checklistSettings = newValue;
+        
+        dispatch(updateTaskListSettingsAsync(taskListId, existingSettings));
+        
+    }
+}
+
 export function updateTaskListSettingsAsync(taskListWidgetId, newValue) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         // Update Firestore.
@@ -2188,10 +2696,24 @@ export function updateTaskListSettingsAsync(taskListWidgetId, newValue) {
     }
 }
 
-
 export function removeTaskListAsync(taskListWidgetId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (taskListWidgetId !== -1) {
+            let taskListName = getTaskListName(getState().taskLists, taskListWidgetId);
+
+            let dialogResult = await postConfirmationDialog(
+                dispatch,
+                getState(),
+                `Are you sure you want to delete ${taskListName}?`,
+                'Delete List',
+                `Delete`,
+                'Cancel'
+                )
+
+            if (dialogResult.result === 'negative') {
+                return;
+            }
+
             // Update Firestore.
             var selectedProjectId = getState().selectedProjectId;
             var isCurrentProjectRemote = isProjectRemote(getState, selectedProjectId);
@@ -2205,7 +2727,7 @@ export function removeTaskListAsync(taskListWidgetId) {
             if (isRemovingLastTaskList(getState, selectedProjectId)) {
                 // We are about to remove the last Task list. Queue up a request to delete any remaining Project Layouts.
                 var projectLayoutRef = getProjectLayoutRef(getFirestore, getState, selectedProjectId);
-                batch.update(projectLayoutRef.doc(selectedProjectId), {layouts: [] });
+                batch.update(projectLayoutRef.doc(selectedProjectId), { layouts: [] });
             }
 
             // Task list
@@ -2225,40 +2747,46 @@ export function removeTaskListAsync(taskListWidgetId) {
                     batch.delete(getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc(id));
                 })
             }
-            
 
-            batch.commit().then(() => {
-                // Carefull what you do here. Promises don't resolve if you are Offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-
-            dispatch(changeFocusedTaskList(-1));
+            dispatch(setFocusedTaskListId(-1));
 
             // Project updated metadata.
             updateProjectUpdatedTime(getState, getFirestore, selectedProjectId);
+            
+            try {
+                await batch.commit();
+            }
+
+            catch(error) {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            }
         }
 
     }
 }
 
 
-export function updateProjectNameAsync(projectId, newValue, oldValue) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setOpenProjectSelectorId(-1));
-        dispatch(setFloatingTextInput(false));
+export function updateProjectNameAsync(projectId, oldValue) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let dialogResult = await postTextInputDialog(dispatch, getState(), 'Name', oldValue, 'Rename Project');
+        if (dialogResult.result === 'cancel') {
+            return
+        }
 
-        var coercedValue = newValue === "" ? "Untitled Project" : newValue;
+        let newValue = dialogResult.value;
+        let coercedValue = newValue === "" ? "Untitled Project" : newValue;
         if (coercedValue !== oldValue) {
 
             // Update Firestore.
-            var projectRef = getProjectRef(getFirestore, getState, projectId);
-            projectRef.update({ projectName: coercedValue }).then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
+            try {
+                let projectRef = getProjectRef(getFirestore, getState, projectId);
+                await projectRef.update({ projectName: coercedValue });
+            }
 
+            catch(error) {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            }
+           
             // Project updated metadata.
             updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
         }
@@ -2266,14 +2794,46 @@ export function updateProjectNameAsync(projectId, newValue, oldValue) {
 }
 
 export function removeProjectAsync(projectId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        if (projectId === -1) {
+            return;
+        }
+        
         dispatch(setShowOnlySelfTasks(false));
 
-        if (getState.selectedProjectId !== -1) {
+        if (isProjectRemote(getState, projectId) === true) {
+            // Direct user to Share menu
+            dispatch(openShareMenu(projectId));
+            return;
+        }
+
+        let projectName = getProjectName(getState().projects, projectId);
+        let dialogResult = await postConfirmationDialog(
+            dispatch,
+            getState(),
+            `Are you sure you want to delete ${projectName}?`,
+            'Delete Project',
+            `Delete`,
+            "Cancel"
+        )
+
+        if (dialogResult.result === 'negative') {
+            return;
+        }
+
+        dispatch(removeLocalProjectAsync(projectId));
+    }
+}
+
+export function removeLocalProjectAsync(projectId) {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+            if (projectId === -1) {
+                return;
+            }
+
             dispatch(setShowCompletedTasksAsync(false));
             dispatch(selectProject(-1));
-            // Get a List of Task List Id's . It's Okay to collect these from State as associated taskLists have already
-            // been loaded in via the handleProjectSelectorClick method. No point in querying Firebase again for this data.
+
             var taskListIds = getState().taskLists.filter(item => {
                 return item.project === projectId;
             }).map(taskList => { return taskList.uid });
@@ -2309,12 +2869,34 @@ export function removeProjectAsync(projectId) {
             }).catch(error => {
                 handleFirebaseUpdateError(error, getState(), dispatch);
             })
-        }
     }
 }
 
-export function removeRemoteProjectAsync(projectId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+export function removeRemoteProjectAsync(projectId, preCondition) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        if (preCondition === false) {
+            let projectName = getProjectName(getState().projects, projectId);
+            let text = `Before you delete ${projectName} you must promote another member to owner status`;
+            let title = 'Hang on!';
+
+            postInformationDialog(dispatch, getState(), text, title);
+
+            return;
+        }
+
+        // Post Confirmation Dialog.
+        let projectName = getProjectName(getState().projects, projectId);
+        let title = "Delete Project";
+        let text = `${projectName} will be deleted forever. Are you really sure you want to continue?`
+        let affirmativeButtonText = `Delete`;
+        let negativeButtonText = 'Cancel'
+        
+        let dialogResult = await postConfirmationDialog(dispatch, getState(), text, title, affirmativeButtonText, negativeButtonText);
+
+        if (dialogResult.result === 'negative') {
+            return;
+        }
+
         if (projectId !== -1 && isProjectRemote(getState, projectId)) {
             dispatch(setIsShareMenuWaiting(true));
             dispatch(setShareMenuMessage("Deleting Project"));
@@ -2322,116 +2904,96 @@ export function removeRemoteProjectAsync(projectId) {
             dispatch(selectProject(-1));
 
             var removeRemoteProject = getFunctions().httpsCallable('removeRemoteProject');
-            removeRemoteProject({projectId: projectId}).then(result => {
-                if (result.data.status === 'complete') {
-                    dispatch(setIsShareMenuOpen(false));
-                    dispatch(setIsShareMenuWaiting(false));
-                    dispatch(setShareMenuMessage(""));
-                }
+            try {
+                let result = await removeRemoteProject({projectId: projectId});
+                    if (result.data.status === 'complete') {
+                        dispatch(setIsShareMenuOpen(false));
+                        dispatch(setIsShareMenuWaiting(false));
+                        dispatch(setShareMenuMessage(""));
+                    }
+    
+                    if (result.data.status === 'error') {
+                        postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + result.data.message, 0, 'Dismiss');
+                        dispatch(setIsShareMenuWaiting(false));
+                        dispatch(setShareMenuMessage(""));
+                    }                    
+            }
 
-                if (result.data.status === 'error') {
-                    dispatch(postSnackbarMessage(result.data.message, false, 'error'));
-                    dispatch(setIsShareMenuWaiting(false));
-                    dispatch(setShareMenuMessage(""));
-                }
-            }).catch(error => {
-                var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`; 
-                dispatch(postSnackbarMessage(message, true, 'infomation'));
+            catch(error) {
+                var message = `An Error occured, are you sure you are connected to the internet? Error Message : ${error.message}`;
+                postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + message, 0, 'Dismiss');
                 dispatch(setIsShareMenuWaiting(false));
                 dispatch(setShareMenuMessage(""));
-            }) 
+            }
+            
         }
 
         else {
             var message = "No project selected or project is not a shared project."
-            dispatch(postSnackbarMessage(message, true, 'infomation'));
+            postGeneralSnackbar(dispatch, getState(), 'error', 'An error occured: ' + error.message, 4000, '');
         }
     }
 }
 
 export function addNewProjectAsync() {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setShowOnlySelfTasks(false));
 
         if (getState().isLoggedIn === true) {
-            // Update Firestore.    
-            var newProjectName = "";
-            var batch = getFirestore().batch();
+            let dialogResult = await postTextInputDialog(dispatch, getState(), "Name", "", "Add new Project");
 
-            // Project.
-            var newProjectRef = getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTS).doc();
-            var newProjectKey = newProjectRef.id;
-
-            var newProject = new ProjectStore(newProjectName, newProjectKey, false, new Date().toISOString(), "");
-            batch.set(newProjectRef, Object.assign({}, newProject));
-
-            // Layout
-            var newLayoutRef = getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTLAYOUTS).doc(newProjectKey);
-
-            var newProjectLayout = new ProjectLayoutStore([], newProjectKey, newProjectKey);
-            batch.set(newLayoutRef, Object.assign({}, newProjectLayout));
-
-            // Selections.
-            dispatch(selectProject(newProjectKey));
-            dispatch(setOpenProjectSelectorId(newProjectKey));
-
-
-            // Execute Additions.
-            batch.commit().then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-        }
-
-    }
-}
-
-export function addNewProjectWithNameAsync(projectName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setShowOnlySelfTasks(false));
-        dispatch(setFloatingTextInput(false));
-
-        if (getState().isLoggedIn === true) {
-            // Update Firestore.    
-            var newProjectName = projectName === "" ? "Untitled Project" : projectName;
-            var batch = getFirestore().batch();
-
-            // Project.
-            var newProjectRef = getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTS).doc();
-            var newProjectKey = newProjectRef.id;
-
-            var newProject = new ProjectStore(newProjectName, newProjectKey, false, new Date().toISOString(), "");
-            batch.set(newProjectRef, Object.assign({}, newProject));
-
-            // Layout
-            var newLayoutRef = getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTLAYOUTS).doc(newProjectKey);
-
-            var newProjectLayout = new ProjectLayoutStore([], newProjectKey, newProjectKey);
-            batch.set(newLayoutRef, Object.assign({}, newProjectLayout));
-
-            // Selections.
-            dispatch(selectProject(newProjectKey));
-
-            // Execute Additions.
-            batch.commit().then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-        }
-
-    }
-}
-
-export function updateTaskCompleteAsync(taskListWidgetId, taskId, newValue, oldValue, currentMetadata) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        if (oldValue !== newValue) {
-            if (getState().selectedTask.taskListWidgetId !== taskListWidgetId &&
-                getState().selectedTask.taskId !== taskId) {
-                dispatch(selectTask(taskListWidgetId, taskId, false));
+            if (dialogResult.result === 'cancel') {
+                return;
             }
 
+            // Update Firestore.    
+            var newProjectName = dialogResult.value === '' ? 'Untitled Project' : dialogResult.value;
+            var batch = getFirestore().batch();
+
+            // Project.
+            var newProjectRef = getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTS).doc();
+            var newProjectId = newProjectRef.id;
+
+            var newProject = new ProjectStore(newProjectName, newProjectId, false, new Date().toISOString(), "");
+            batch.set(newProjectRef, Object.assign({}, newProject));
+
+            // Layout
+            var newLayoutRef = getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTLAYOUTS).doc(newProjectId);
+
+            var newProjectLayout = new ProjectLayoutStore([], newProjectId, newProjectId);
+            batch.set(newLayoutRef, Object.assign({}, newProjectLayout));
+
+            // Add an initial task list.
+            let newTaskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc();
+            let newTaskList = new TaskListStore(
+                'Assorted',
+                newProjectId,
+                newTaskListRef.id,
+                newTaskListRef.id,
+                Object.assign({}, new TaskListSettingsStore(true, "date added", ChecklistSettingsFactory(false, "", "", 1))),
+            )
+
+            batch.set(newTaskListRef, {...newTaskList});
+
+            // Selections.
+            dispatch(selectProject(newProjectId));
+            dispatch(setOpenProjectSelectorId(newProjectId));
+            dispatch(setFocusedTaskListId(newTaskListRef.id));
+            
+            // Execute Additions.
+            batch.commit().then(() => {
+                // Carefull what you do here, promises don't resolve if you are offline.
+            }).catch(error => {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            })
+        }
+
+    }
+}
+
+export function updateTaskCompleteAsync(taskId, newValue, oldValue, currentMetadata) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        if (oldValue !== newValue) {
             // Update Firestore.
             var taskRef = getTaskRef(getFirestore, getState, taskId);
             var completedBy = newValue === true ? getState().displayName : "";
@@ -2480,33 +3042,42 @@ export function updateProjectLayoutAsync(layouts, oldLayouts, projectId) {
 }
 
 
-export function updateTaskNameAsync(taskListWidgetId, taskId, newValue, oldValue, currentMetadata) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(closeTask(taskListWidgetId, taskId));
-        dispatch(setFloatingTextInput(false));
+export function updateTaskNameAsync(taskId, newValue, currentValue, currentMetadata) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        // Coerce.
+        newValue = newValue === '' ? currentValue : newValue;
 
-            // Because we Reset the new task property. (Which supports pushing new Tasks to the top of the List).
-            // We can't perform an equality check. We have to naievly update.
+        var update = {
+            taskName: newValue,
+            isNewTask: false, // Reset new Task Property.
+            metadata: getUpdatedMetadata(currentMetadata, { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
+        }
 
-            var update = {
-                taskName: newValue,
-                isNewTask: false, // Reset new Task Property.
-                metadata: getUpdatedMetadata(currentMetadata, { updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate() })
-            }
+        // Returns a new Update Object with arguments parsed in (if any);
+        var newUpdate = parseArgumentsIntoUpdate(getState, update);
 
-            // Returns a new Update Object with arguments parsed in (if any);
-            var newUpdate = parseArgumentsIntoUpdate(getState, update);
+        // Update Firestore.
+        var taskRef = getTaskRef(getFirestore, getState, taskId);
+        taskRef.update(newUpdate).then(() => {
+            // Carefull what you do here, promises don't resolve if you are offline.
+        }).catch(error => {
+            handleFirebaseUpdateError(error, getState(), dispatch);
+        })
 
-            // Update Firestore.
-            var taskRef = getTaskRef(getFirestore, getState, taskId);
-            taskRef.update(newUpdate).then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
+        // Project updated metadata.
+        updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+    }
+}
 
-            // Project updated metadata.
-            updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+export function updateTaskNameWithDialogAsync(taskId, currentValue, currentMetadata) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+            let dialogResult = await postTextInputDialog(dispatch, getState(), "Name", currentValue, "Edit Task name");
+
+            if (dialogResult.result === "okay") {
+                let newValue = dialogResult.value;
+
+                dispatch(updateTaskNameAsync(taskId, newValue, currentValue, currentMetadata));
+            }  
     }
 }
 
@@ -2564,69 +3135,102 @@ function deleteTaskAsync(getFirestore, getState, taskId) {
     })
 }
 
-export function updateTaskListWidgetHeaderAsync(taskListWidgetId, newName, oldName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setOpenTaskListWidgetHeaderId(-1));
-        dispatch(setFloatingTextInput(false));
+export function updateTaskListNameAsync(taskListId, currentName) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let dialogResult = await postTextInputDialog(dispatch, getState(), 'Name', currentName, 'Rename List');
+        if (dialogResult.result === 'cancel') {
+            return;
+        }
 
-        if (newName !== oldName) {
-            var taskListRef = getTaskListRef(getFirestore, getState, taskListWidgetId);
+        let newName = dialogResult.value;
 
-            taskListRef.update({ taskListName: newName }).then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
+        if (newName !== currentName) {
+            var taskListRef = getTaskListRef(getFirestore, getState, taskListId);
 
             // Project updated metadata.
             updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+
+            try {
+                await taskListRef.update({ taskListName: newName });
+            }
+
+            catch(error) {
+                handleFirebaseUpdateError(error, getState(), dispatch);
+            }            
+        }
+    }
+}
+
+export function moveTaskViaDialogAsync(taskId, sourceTaskListId, sourceProjectId) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let lists = getState().taskLists.filter( item => {
+            return item.project === sourceProjectId && item.uid !== sourceTaskListId;
+        })
+
+        let items = lists.map( item => {
+            return {
+                value: item.uid,
+                primaryText: item.taskListName,
+            }
+        })
+
+        let dialogResult = await postQuickItemSelectDialog(
+            dispatch,
+            getState(),
+            "Select List",
+            '',
+            items,
+            "Cancel")
+        
+        if (dialogResult.result === 'negative') {
+            return;
+        }
+
+        let destinationTaskListId = dialogResult.value;
+
+        if (destinationTaskListId === -1) {
+            return;
+        } 
+
+        // Extract metadata.
+        var currentMetadata = getState().tasks.find(item => { return item.uid === taskId }).metadata;
+
+        dispatch(setFocusedTaskListId(destinationTaskListId));
+
+        // Project updated metadata.
+        updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+
+        let taskRef = getTaskRef(getFirestore, getState, taskId);
+
+        try {
+            await taskRef.update({
+                taskList: destinationTaskListId,
+                metadata: getUpdatedMetadata(currentMetadata, {updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate()}),
+            })
+        }
+        
+        catch(error) {
+            handleFirebaseUpdateError(error, getState(), dispatch);
         }
     }
 }
 
 
-export function moveTaskAsync(destinationTaskListId, taskId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(startTaskMoveInDatabase());
-
-        // If Task was moved via Drag and Drop, taskId will have been passed in as parameter.
-        var movingTaskId = taskId === undefined ? getState().movingTaskId : taskId;
-        var taskRef = getTaskRef(getFirestore, getState, movingTaskId);
-
-        // Can't get currentMetadata from the Task directly, so extract it here.
-        var currentMetadata = getState().tasks.find(task => {return task.uid === movingTaskId}).metadata;
-
-        taskRef.update({
-            taskList: destinationTaskListId,
-            metadata: getUpdatedMetadata(currentMetadata, {updatedBy: getState().displayName, updatedOn: getHumanFriendlyDate()}),
-        }).then(() => {
-            /// Carefull what you do here, promises don't resolve if you are offline.
-        }).catch(error => {
-            handleFirebaseUpdateError(error, getState(), dispatch);
-        })
-
-        dispatch(endTaskMove(movingTaskId, destinationTaskListId));
-        dispatch(changeFocusedTaskList(destinationTaskListId));
-
-        // Project updated metadata.
-        updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
-    }
-}
-
-
 export function addNewTaskAsync() {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setShowOnlySelfTasks(false));
 
-        if (getState().focusedTaskListId !== -1) {
+        let { focusedTaskListId, selectedProjectId } = getState();
+        if (selectedProjectId !== -1 && focusedTaskListId !== -1) {
+            let dialogResult = await postTextInputDialog(dispatch, getState(), "Name", "", "Create Task");
+            if (dialogResult.result === "okay") {
+                let taskName = dialogResult.value;
 
-            const { selectedProjectId, focusedTaskListId } = getState();
+                // Coerce.
+                taskName = taskName === '' ? 'My Task' : taskName;
 
-            if (selectedProjectId !== -1 && focusedTaskListId !== -1) {
-                // Add a new Task.
-                dispatch(startTaskAdd());
-
-                var newTaskRef;
+                // Add new Task.
+                let newTaskRef;
                 if (isProjectRemote(getState, getState().selectedProjectId)) {
                     newTaskRef = getFirestore().collection(REMOTES).doc(getState().selectedProjectId).collection(TASKS).doc();
                 }
@@ -2634,22 +3238,34 @@ export function addNewTaskAsync() {
                 else {
                     newTaskRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc();
                 }
-                
-                var metadata = new TaskMetadataStore(getState().displayName, getHumanFriendlyDate(new Date()), "", "", "","");
 
-                var newTaskKey = newTaskRef.id;
-                var newTask = new TaskStore(
-                    "",
-                    "",
+                let metadata = new TaskMetadataStore(getState().displayName, getHumanFriendlyDate(new Date()), "", "", "", "");
+
+                // Parse Arguments into an Update Object.
+                let parsedUpdate = parseArgumentsIntoUpdate(getState, {
+                    taskName: taskName,
+                    dueDate: "",
+                    isHighPriority: false
+                });
+
+                let parsedTaskName = parsedUpdate.taskName;
+                let parsedDueDate = parsedUpdate.dueDate;
+                let parsedPriority = parsedUpdate.isHighPriority;
+
+                let newTaskKey = newTaskRef.id;
+                let newTask = new TaskStore(
+                    parsedTaskName,
+                    parsedDueDate,
                     false,
                     selectedProjectId,
                     focusedTaskListId,
                     newTaskKey,
                     new Moment().toISOString(),
-                    true,
                     false,
-                    Object.assign({},metadata),
+                    parsedPriority,
+                    Object.assign({}, metadata),
                     -1,
+                    [],
                 )
 
                 newTaskRef.set(Object.assign({}, newTask)).then(() => {
@@ -2657,177 +3273,61 @@ export function addNewTaskAsync() {
                     handleFirebaseUpdateError(error, getState(), dispatch);
                 })
 
-                dispatch(openTask(newTask.taskList, newTask.uid)); // Opening a Task by convention Selects it.
-
                 // Project updated metadata.
                 updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
-
             }
         }
     }
 }
 
-export function addNewTaskWithNameAsync(taskName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+export function addNewTaskListAsync(suppressMetadataUpdate) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         dispatch(setShowOnlySelfTasks(false));
-
-        const { selectedProjectId, focusedTaskListId } = getState();
-
-        if (selectedProjectId !== -1 && focusedTaskListId !== -1) {
-            // Add a new Task.
-            dispatch(startTaskAdd());
-            dispatch(setFloatingTextInput(false));
-            dispatch(closeTask(focusedTaskListId, newTaskKey)); // Close the Task Input for brevity. Even though
-            // technically we don't use this in Mobile.
-
-            var newTaskRef;
-            if (isProjectRemote(getState, getState().selectedProjectId)) {
-                newTaskRef = getFirestore().collection(REMOTES).doc(getState().selectedProjectId).collection(TASKS).doc();
-            }
-
-            else {
-                newTaskRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc();
-            }
-
-            var metadata = new TaskMetadataStore(getState().displayName, getHumanFriendlyDate(new Date()), "", "", "","");
-
-            
-            // Parse Arguments into an Update Object.
-            var parsedUpdate = parseArgumentsIntoUpdate(getState, { 
-                taskName: taskName,
-                dueDate: "",
-                isHighPriority: false
-            });
-
-            var parsedTaskName = parsedUpdate.taskName;
-            var parsedDueDate = parsedUpdate.dueDate;
-            var parsedPriority = parsedUpdate.isHighPriority;
-
-
-            var newTaskKey = newTaskRef.id;
-            var newTask = new TaskStore(
-                parsedTaskName,
-                parsedDueDate,
-                false,
-                selectedProjectId,
-                focusedTaskListId,
-                newTaskKey,
-                new Moment().toISOString(),
-                false,
-                parsedPriority,
-                Object.assign({}, metadata),
-                -1,
-            )
-
-            newTaskRef.set(Object.assign({}, newTask)).then(() => {
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-
-            dispatch(selectTask(focusedTaskListId, newTaskKey, false));
-
-            // Project updated metadata.
-            updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
-
-        }
-    }
-}
-
-export function addNewTaskListAsync() {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setShowOnlySelfTasks(false));
-        dispatch(startTasklistAdd());
-
         var selectedProjectId = getState().selectedProjectId;
 
         if (selectedProjectId !== -1) {
-            // Add to Firestore.
-            var batch = getFirestore().batch();
+            let dialogResult = await postTextInputDialog(dispatch, getState(), "List name", "", "Create List");
+            if (dialogResult.result === "okay") {
+                let taskListName = dialogResult.value;
+                // Add to Firestore.
+                let batch = getFirestore().batch();
 
-            var newTaskListRef;
+                let newTaskListRef;
 
-            if (isProjectRemote(getState, selectedProjectId)) {
-                newTaskListRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKLISTS).doc();
+                if (isProjectRemote(getState, selectedProjectId)) {
+                    newTaskListRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKLISTS).doc();
+                }
+
+                else {
+                    newTaskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc();
+                }
+
+                let newTaskList = new TaskListStore(
+                    taskListName,
+                    selectedProjectId,
+                    newTaskListRef.id,
+                    newTaskListRef.id,
+                    Object.assign({}, new TaskListSettingsStore(true, "date added", ChecklistSettingsFactory(false, "", "", 1))),
+                )
+
+                batch.set(newTaskListRef, { ...newTaskList });
+
+                // Add a new Entry into the ProjectLayouts for this Task List.
+                addProjectLayoutEntriesToBatch(batch, selectedProjectId, newTaskListRef.id, getFirestore, getState);
+
+                batch.commit().then(() => {
+                    // Careful what you do here, promises don't resolve if you are offline.
+                }).catch(error => {
+                    handleFirebaseUpdateError(error, getState(), dispatch);
+                })
+
+                dispatch(setFocusedTaskListId(newTaskListRef.id));
+
+                // Project updated metadata.
+                if (suppressMetadataUpdate === false) {
+                    updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
+                }
             }
-            
-            else {
-                newTaskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc();
-            }
-
-            var newTaskList = new TaskListStore(
-                "",
-                selectedProjectId,
-                newTaskListRef.id,
-                newTaskListRef.id,
-                Object.assign({}, new TaskListSettingsStore(true, "date added", ChecklistSettingsFactory(false,"", "", 1))),
-            )
-
-            batch.set(newTaskListRef, { ...newTaskList });
-
-            dispatch(changeFocusedTaskList(newTaskListRef.id));
-            dispatch(setOpenTaskListWidgetHeaderId(newTaskListRef.id));
-            
-            // Add a new Entry into the ProjectLayouts for this Task List.
-            addProjectLayoutEntriesToBatch(batch, selectedProjectId, newTaskListRef.id, getFirestore, getState);
-
-            batch.commit().then( () => {
-                // Success
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-
-            // Project updated metadata.
-            updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
-        }
-    }
-}
-
-
-export function addNewTaskListWithNameAsync(taskListName) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        dispatch(setShowOnlySelfTasks(false));
-        dispatch(startTasklistAdd());
-        dispatch(setFloatingTextInput(false));
-
-        var selectedProjectId = getState().selectedProjectId;
-
-        if (selectedProjectId !== -1) {
-            // Add to Firestore.
-            var batch = getFirestore().batch();
-
-            var newTaskListRef;
-
-            if (isProjectRemote(getState, selectedProjectId)) {
-                newTaskListRef = getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKLISTS).doc();
-            }
-            
-            else {
-                newTaskListRef = getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc();
-            }
-
-            var newTaskList = new TaskListStore(
-                taskListName,
-                selectedProjectId,
-                newTaskListRef.id,
-                newTaskListRef.id,
-                Object.assign({}, new TaskListSettingsStore(true, "date added", ChecklistSettingsFactory(false,"", "", 1))),
-            )
-
-            batch.set(newTaskListRef, { ...newTaskList });
-
-            // Add a new Entry into the ProjectLayouts for this Task List.
-            addProjectLayoutEntriesToBatch(batch, selectedProjectId, newTaskListRef.id, getFirestore, getState);
-
-            batch.commit().then(() => {
-                // Careful what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
-                handleFirebaseUpdateError(error, getState(), dispatch);
-            })
-
-            dispatch(changeFocusedTaskList(newTaskListRef.id));
-
-            // Project updated metadata.
-            updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
         }
     }
 }
@@ -2841,15 +3341,17 @@ export function getAccountConfigAsync() {
 
                 // Dexie returns numbers as strings. Convert "-1" to a number if required.
                 var favouriteProjectId = accountConfig.favouriteProjectId === "-1" ?
-                    parseInt(accountConfig.favouriteProjectId) :
-                    accountConfig.favouriteProjectId;
+                    -1 : accountConfig.favouriteProjectId;
 
-                dispatch(selectProject(favouriteProjectId));
-                
-                if (HANDBALL_DEVICE === "mobile" && favouriteProjectId !== -1) {
-                    dispatch(setIsSidebarOpen(false));
-                    dispatch(setIsAppSettingsOpen(false));
+                if (favouriteProjectId !== -1) {
+                    dispatch(selectProject(favouriteProjectId));
+
+                    if (HANDBALL_DEVICE === "mobile" && favouriteProjectId !== -1) {
+                        dispatch(setIsAppDrawerOpen(false));
+                        dispatch(setIsAppSettingsOpen(false));
+                    }
                 }
+                
             }
         }, error => {
             handleFirebaseSnapshotError(error, getState(), dispatch);
@@ -2922,7 +3424,14 @@ function handleTasksSnapshot(getState, dispatch, isRemote, snapshot, remoteProje
     if (snapshot.docChanges().length > 0) {
         var tasks = [];
         snapshot.forEach(doc => {
-            tasks.push(doc.data());
+            let task = doc.data();
+
+            // Coercion
+            task.dueDate = task.dueDate === null ? "" : task.dueDate;
+            task.metadata = task.metadata === undefined ? { ...new TaskMetadataStore("","","","","","") } : task.metadata;
+            task.commentPreview = task.commentPreview === undefined ? [] : task.commentPreview;
+
+            tasks.push(task);
         });
 
         // Remote
@@ -3316,7 +3825,7 @@ function handleFirebaseSnapshotError(error, state, dispatch) {
     switch (error.code) {
         case "permission-denied":
             if (state.isLoggedIn) {
-                dispatch(postSnackbarMessage(error.message, false, 'error'))
+                postGeneralSnackbar(dispatch, state, 'error', 'An error occured: ' + error.message, 0, 'Dismiss');
             }
             
             // No handling required if logged out. Expected behaviour.
@@ -3330,53 +3839,51 @@ function handleFirebaseUpdateError(error, state, dispatch) {
     switch (error.code) {
         case "permission-denied":
             if (state.isLoggedIn) {
-                dispatch(postSnackbarMessage(`${error.code} : ${error.message}`, false, 'error'));
+                postGeneralSnackbar(dispatch, state, 'error', `${error.code} : ${error.message}`, 0, 'Dismiss');
             }
 
             else {
                 let message = "You must log in first.";
-                dispatch(postSnackbarMessage(message, true, 'infomation'));
+                postGeneralSnackbar(dispatch, state, 'information', 'You must log in first', 4000, '');
             }
 
         default:
             throw error;
     }
-    
 }
 
-
-function handleAuthError(dispatch, error) {
+function handleAuthError(dispatch, state, error) {
     switch (error.code) {
         case "auth/wrong-password":
-            dispatch(postSnackbarMessage("Incorrect password", true, 'negative-notification'))
+            postGeneralSnackbar(dispatch, state, 'information', 'Incorrect password', 4000, '')
             break;
 
         case "auth/no-user-found":
-            dispatch(postSnackbarMessage("No user matching that email was found", true, 'negative-notification'));
+        postGeneralSnackbar(dispatch, state, 'information', 'No user matching that email was found', 4000, '')
             break;
 
         case "auth/invalid-email":
-            dispatch(postSnackbarMessage("The email you have entered is invalid", true, 'negative-notification'));
+            postGeneralSnackbar(dispatch, state, 'information', 'Invalid email', 4000, '')
             break;
 
         case "auth/network-request-failed":
-            dispatch(postSnackbarMessage("Cannot reach the authentication servers, are you sure you have an internet connection?", true, 'negative-notification'));
+            postGeneralSnackbar(dispatch, state, 'information', 'Cannot reach the Authentication servers', 4000, '')
             break;
 
         case "auth/email-already-in-use":
-            dispatch(postSnackbarMessage("A user with that email is already registered", true, 'negative-notification'));
+            postGeneralSnackbar(dispatch, state, 'information', 'Email address already in use', 4000, '')
             break;
 
         case "auth/weak-password":
-            dispatch(postSnackbarMessage("Password to weak, must be longer than 6 characters", true, 'negative-notification'));
+        postGeneralSnackbar(dispatch, state, 'information', 'Password to short', 4000, '')
             break;
         
         case "auth/user-disabled":
-            dispatch(postSnackbarMessage("Sorry, your account has been disabled by the developer.", true, 'negative-notification'));
+        postGeneralSnackbar(dispatch, state, 'information', 'Password to short. Must be 6 characters or more', 4000, '')
             break;
         
         default:
-            dispatch(postSnackbarMessage(`${error.code} : ${error.message}`, false, 'error'));
+            postGeneralSnackbar(dispatch, state, 'error', `${error.code} : ${error.message}`, 0, 'Dismiss')
     }
 }
 
@@ -3708,4 +4215,279 @@ function addProjectLayoutMovesToBatch(batch, sourceProjectId, targetProjectId, t
 
         batch.update(getProjectLayoutRef(getFirestore, getState, targetProjectId).doc(layoutId), { layouts: newLayouts});
     }
+}
+
+ function postTextInputDialog(dispatch, state, label, text, title) {
+    return new Promise( (resolve, reject) => {
+        let onCancel = () => {
+            dispatch(setTextInputDialog(false,
+                state.textInputDialog.label,
+                state.textInputDialog.text,
+                state.textInputDialog.title,
+                () => { },
+                () => { },
+            ))
+
+            resolve({ result: 'cancel', value: null });
+        }
+
+        let onOkay = (newValue) => {
+            dispatch(setTextInputDialog(false,
+                state.textInputDialog.label,
+                state.textInputDialog.text,
+                state.textInputDialog.title,
+                () => {},
+                () => {},
+            ))
+
+            resolve({ result: 'okay', value: newValue})
+        }
+
+        dispatch(setTextInputDialog(true, label, text, title, onCancel, onOkay));
+    })
+}
+
+function postInformationDialog(dispatch, state, text, title) {
+    return new Promise( (resolve, reject) => {
+        let onOkay = (newValue) => {
+            dispatch(setInformationDialog(false,
+                state.informationDialog.text,
+                state.informationDialog.title,
+                () => {},
+            ))
+
+            resolve();
+        }
+
+        dispatch(setInformationDialog(true, text, title, onOkay));
+    })
+}
+
+function postQuickItemSelectDialog(dispatch, state, title, text, items, negativeButtonText) {
+    return new Promise( (resolve, reject) => {
+        let onSelect = (value) => {
+            dispatch(setQuickItemSelectDialog(
+                false,
+                state.quickItemSelectDialog.title,
+                state.quickItemSelectDialog.text,
+                state.quickItemSelectDialog.items,
+                state.quickItemSelectDialog.negativeButtonText,
+                () => {},
+                () => {},
+            ))
+
+            resolve( {
+                result: 'affirmative',
+                value: value,
+            })
+        }
+
+        let onNegative = () => {
+            dispatch(setQuickItemSelectDialog(
+                false,
+                state.quickItemSelectDialog.title,
+                state.quickItemSelectDialog.text,
+                state.quickItemSelectDialog.items,
+                state.quickItemSelectDialog.negativeButtonText,
+                () => {},
+                () => {},
+            ))
+
+            resolve( {
+                result: 'negative',
+            })
+        }
+
+        // Post dialog.
+        dispatch(setQuickItemSelectDialog(
+            true,
+            title,
+            text,
+            items,
+            negativeButtonText,
+            onSelect,
+            onNegative,
+        ))
+    })
+}
+
+function postItemSelectDialog(dispatch, state, title, text, items, affirmativeButtonText, negativeButtonText) {
+    return new Promise( (resolve, reject) => {
+        let onAffirmative = (value) => {
+            dispatch(setItemSelectDialog(
+                false,
+                state.itemSelectDialog.title,
+                state.itemSelectDialog.text,
+                state.itemSelectDialog.items,
+                state.itemSelectDialog.affirmativeButtonText,
+                state.itemSelectDialog.negativeButtonText,
+                () => {},
+                () => {},
+            ))
+
+            resolve( {
+                result: 'affirmative',
+                value: value,
+            })
+        }
+
+        let onNegative = () => {
+            dispatch(setItemSelectDialog(
+                false,
+                state.itemSelectDialog.title,
+                state.itemSelectDialog.text,
+                state.itemSelectDialog.items,
+                state.itemSelectDialog.affirmativeButtonText,
+                state.itemSelectDialog.negativeButtonText,
+                () => {},
+                () => {},
+            ))
+
+            resolve( {
+                result: 'negative',
+            })
+        }
+
+        // Post dialog.
+        dispatch(setItemSelectDialog(
+            true,
+            title,
+            text,
+            items,
+            affirmativeButtonText,
+            negativeButtonText,
+            onAffirmative,
+            onNegative
+        ))
+    })
+}
+
+function postConfirmationDialog(dispatch, state, text, title, affirmativeButtonText, negativeButtonText) {
+    return new Promise( (resolve, reject) => {
+        let onAffirmative = () => {
+            dispatch(setConfirmationDialog(
+                false,
+                state.confirmationDialog.title,
+                state.confirmationDialog.text,
+                state.confirmationDialog.affirmativeButtonText,
+                state.confirmationDialog.negativeButtonText,
+                () => {},
+                () => {}
+            ))
+
+            resolve({ result: 'affirmative' });
+        }
+
+        let onNegative = () => {
+            dispatch(setConfirmationDialog(
+                false,
+                state.confirmationDialog.title,
+                state.confirmationDialog.text,
+                state.confirmationDialog.affirmativeButtonText,
+                state.confirmationDialog.negativeButtonText,
+                () => {},
+                () => {}
+            ))
+
+            resolve({ result: 'negative' })
+        }
+
+        // Post Dialog.
+        dispatch(setConfirmationDialog(
+            true,
+            title,
+            text,
+            affirmativeButtonText,
+            negativeButtonText,
+            onAffirmative,
+            onNegative,
+        ))
+    })
+}
+
+function postGeneralSnackbar(dispatch, state, type, text, selfDismissTime, actionButtonText) {
+    return new Promise((resolve, reject) => {
+        let onAction = () => {
+            dispatch(setGeneralSnackbar(
+                false,
+                state.generalSnackbar.type,
+                state.generalSnackbar.message,
+                0,
+                { actionButtonText: actionButtonText, onAction: () => {} })
+            )
+
+            resolve();
+        }
+
+        // Post Snackbar.
+        dispatch(setGeneralSnackbar(
+            true,
+            type,
+            text,
+            selfDismissTime,
+            {
+                actionButtonText: actionButtonText,
+                onAction: onAction,
+            }
+        ))
+
+        if (selfDismissTime !== 0) {
+            wait(selfDismissTime).then(() => {
+                dispatch(setGeneralSnackbar(
+                    false,
+                    state.generalSnackbar.type,
+                    state.generalSnackbar.message,
+                    0,
+                    { actionButtonText: actionButtonText, onAction: () => {} })
+                )
+
+                resolve();
+            })
+        }
+    })
+}
+
+function extractTaskList(taskListId, taskLists) {
+    return taskLists.find( item => {
+        return item.uid === taskListId;
+    })
+}
+
+function wait(ms) {
+    return new Promise( (resolve, reject) => {
+        setTimeout( () => { resolve() }, ms);
+    })
+}
+
+function getProjectName(projects, projectId) {
+    if (projects === undefined || projectId === undefined) {
+        return '';
+    } 
+
+    let project = projects.find(item => {
+        return item.uid === projectId;
+    })
+
+    if (project === undefined) {
+        return '';
+    }
+
+    return project.projectName;
+}
+
+
+function getTaskListName(taskLists, taskListId) {
+    if (taskLists === undefined || taskListId === undefined) {
+        return '';
+    } 
+
+    let taskList = taskLists.find(item => {
+        return item.uid === taskListId;
+    })
+
+    if (taskList === undefined) {
+        return '';
+    }
+
+    return taskList.taskListName;
 }

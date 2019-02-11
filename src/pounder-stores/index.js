@@ -1,3 +1,44 @@
+export function ThemeFactory(id, name, isInbuilt, theme) {
+    return {
+        id,
+        name,
+        isInbuilt,
+        theme,
+    }
+}
+
+export function MuiThemeFactory() {
+    return {
+        type: 'dark',
+        palette: {
+            primaryColor: {
+                id: 'indigo',
+                shadeIndex: 6
+            },
+            secondaryColor: {
+                id: 'orange',
+                shadeIndex: 5
+            },
+            backgroundColor: {
+                id: 'black',
+                shadeIndex: 8,
+            },
+            custom: {
+                "today": '#1455c0',
+                "soon": '#FF9300',
+                "overdue": '#F00',
+                "later": '#22B30B',
+                "unreadItem": '#1455c0',
+                "highPriority": 'orange'
+            },
+        },
+        isDense: false,
+        'typography': {
+            useNextVariants: true
+        }
+    }
+}
+
 export class DatabaseStore {
     constructor(projects, projectLayouts, taskLists, tasks, accountConfig) {
         this.projects = projects;
@@ -99,7 +140,7 @@ export class TaskListStore {
 }
 
 export class TaskStore {
-    constructor(taskName, dueDate, isComplete, project, taskList, uid, dateAdded, isNewTask, isHighPriority, metadata, assignedTo) {
+    constructor(taskName, dueDate, isComplete, project, taskList, uid, dateAdded, isNewTask, isHighPriority, metadata, assignedTo, commentPreview) {
         this.taskName = taskName;
         this.dueDate = dueDate;
         this.isComplete = isComplete;
@@ -111,6 +152,7 @@ export class TaskStore {
         this.isHighPriority = isHighPriority;
         this.metadata = metadata;
         this.assignedTo = assignedTo;
+        this.commentPreview = commentPreview;
     }
 }
 

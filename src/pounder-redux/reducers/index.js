@@ -5,13 +5,14 @@ import { AccountConfigFallback, getUserUid } from '../../pounder-firebase';
 
 export function appReducer(state, action) {
     switch (action.type) {
-        case ActionTypes.CHANGE_FOCUSED_TASKLIST:
+        case ActionTypes.SET_FOCUSED_TASKLIST_ID:
             return { 
                 ...state,
                 focusedTaskListId: action.id,
                 isTaskListJumpMenuOpen: false,
                 selectedTask: processSelectedTask(state.selectedTask, action.id),
                 openTaskOptionsId: -1,
+                enableStates: { ...state.enableStates, newTaskFab: action.id !== -1 }
             };
         
         case ActionTypes.SELECT_TASK:
@@ -61,10 +62,10 @@ export function appReducer(state, action) {
                 }
             }
 
-        case ActionTypes.SET_IS_SIDEBAR_OPEN:
+        case ActionTypes.SET_IS_APP_DRAWER_OPEN:
             return {
                 ...state,
-                isSidebarOpen: action.value,
+                isAppDrawerOpen: action.value,
             }
 
         case ActionTypes.START_TASK_MOVE:
@@ -129,13 +130,13 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: true
             }
 
-        case ActionTypes.SET_FLOATING_TEXT_INPUT:
+        case ActionTypes.SET_TEXT_INPUT_DIALOG:
             return {
                 ...state,
-                floatingTextInput: action.value,
+                textInputDialog: action.value,
             }
         
-        case ActionTypes.RECEIVE_LOCAL_PROJECTS:
+        case ActionTypes.LOCAL_PROJECTS:
             return {
                 ...state,
                 localProjects: action.projects,
@@ -147,6 +148,14 @@ export function appReducer(state, action) {
             return {
                 ...state,
                 isInRegisterMode: action.value,
+            }
+
+        case ActionTypes.RECEIVE_LOCAL_PROJECTS:
+            return {
+                ...state,
+                localProjects: action.projects,
+                projects: [...sortProjects(state.generalConfig.sortProjectsBy, action.projects), ...state.remoteProjects],
+                isAwaitingFirebase: false,
             }
 
         case ActionTypes.RECEIVE_REMOTE_PROJECTS:
@@ -192,6 +201,8 @@ export function appReducer(state, action) {
                 tasks: newTasks,
                 incompletedLocalTasks: action.value,
                 projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks),
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId),
+                filteredTasks: filterTasksByProject(newTasks, state.selectedProjectId, state.showOnlySelfTasks),
             }
 
         case ActionTypes.RECEIVE_COMPLETED_LOCAL_TASKS:
@@ -201,6 +212,8 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 tasks: newTasks,
                 completedLocalTasks: action.value,
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId),
+                filteredTasks: filterTasksByProject(newTasks, state.selectedProjectId, state.showOnlySelfTasks),
             }
 
         case ActionTypes.RECEIVE_INCOMPLETED_REMOTE_TASKS:
@@ -210,7 +223,9 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 tasks: newTasks,
                 incompletedRemoteTasks: action.value,
-                projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks)
+                projectSelectorIndicators: getProjectSelectorIndicatorsHelper(newTasks),
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId),
+                filteredTasks: filterTasksByProject(newTasks, state.selectedProjectId, state.showOnlySelfTasks),
             }
         
         case ActionTypes.RECEIVE_COMPLETED_REMOTE_TASKS:
@@ -220,6 +235,8 @@ export function appReducer(state, action) {
                 isAwaitingFirebase: false,
                 tasks: newTasks,
                 completedRemoteTasks: action.value,
+                openTaskInspectorEntity: updateOpenTaskInspectorEntity(newTasks, state.openTaskInspectorId),
+                filteredTasks: filterTasksByProject(newTasks, state.selectedProjectId, state.showOnlySelfTasks),
             }
 
         case ActionTypes.SET_IS_PROJECT_MENU_OPEN:
@@ -273,19 +290,35 @@ export function appReducer(state, action) {
             }
 
         case ActionTypes.RECEIVE_LOCAL_TASKLISTS:
+            var newTaskLists = [...action.taskLists, ...state.remoteTaskLists];
+            var newFilteredTaskLists = filterTaskListsByProject(newTaskLists, state.selectedProjectId);
+            var focusedTaskListId = maybeForceFocusTaskList(state.focusedTaskListId, newFilteredTaskLists);
+            
             return {
                 ...state,
                 isAwaitingFirebase: false,
-                taskLists: [...action.taskLists, ...state.remoteTaskLists],
+                taskLists: newTaskLists,
                 localTaskLists: action.taskLists,
+                openChecklistSettingsEntity: updateOpenChecklistSettingsEntity(newTaskLists, state.openChecklistSettingsId),
+                filteredTaskLists: newFilteredTaskLists,
+                focusedTaskListId: focusedTaskListId,
+                enableStates: { ...state.enableStates, newTaskFab: focusedTaskListId !== -1 }
             }
 
         case ActionTypes.RECEIVE_REMOTE_TASKLISTS:
+            var newTaskLists = [...state.localTaskLists, ...action.taskLists];
+            var newFilteredTaskLists = filterTaskListsByProject(newTaskLists, state.selectedProjectId);
+            var focusedTaskListId = maybeForceFocusTaskList(state.focusedTaskListId, newFilteredTaskLists);
+
             return {
                 ...state,
                 isAwatingFirebase: false,
-                taskLists: [...state.localTaskLists, ...action.taskLists],
+                taskLists: newTaskLists,
                 remoteTaskLists: action.taskLists,
+                openChecklistSettingsEntity: updateOpenChecklistSettingsEntity(newTaskLists, state.openChecklistSettingsId),
+                filteredTaskLists: newFilteredTaskLists,
+                focusedTaskListId: focusedTaskListId,
+                enableStates: { ...state.enableStates, newTaskFab: focusedTaskListId !== -1 }
             }
         
         case ActionTypes.START_PROJECTLAYOUTS_FETCH:
@@ -323,6 +356,9 @@ export function appReducer(state, action) {
             }
         
         case ActionTypes.SELECT_PROJECT:
+            var filteredTaskLists = filterTaskListsByProject(state.taskLists, action.projectId);
+            var focusedTaskListId = action.value === -1 ? -1 : maybeForceFocusTaskList(state.focusedTaskListId, filteredTaskLists);
+
             return {
                 ...state,
                 selectedProjectId: action.projectId,
@@ -340,10 +376,14 @@ export function appReducer(state, action) {
                 isATaskMoving: false,
                 movingTaskId: -1,
                 sourceTaskListId: -1,
-                focusedTaskListId: -1,
+                focusedTaskListId: focusedTaskListId,
                 openTaskListSettingsMenuId: -1,
                 isTaskListJumpMenuOpen: false,
                 showOnlySelfTasks: false,
+                isAppDrawerOpen: action.projectId === -1 ? true : false,
+                enableStates: {...state.enableStates, newTaskFab: focusedTaskListId !== -1},
+                filteredTasks: filterTasksByProject(state.tasks, action.projectId, state.showOnlySelfTasks),
+                filteredTaskLists: filteredTaskLists
             }
         
         case ActionTypes.SET_PROJECTS_HAVE_PENDING_WRITES: 
@@ -370,16 +410,16 @@ export function appReducer(state, action) {
                 tasksHavePendingWrites: action.value,
             }
         
-        case ActionTypes.OPEN_TASK_LIST_JUMP_MENU:
+        case ActionTypes.OPEN_JUMP_MENU:
             return {
                 ...state,
-                isTaskListJumpMenuOpen: true,
+                isJumpMenuOpen: true,
             }
         
-        case ActionTypes.CLOSE_TASK_LIST_JUMP_MENU:
+        case ActionTypes.CLOSE_JUMP_MENU:
             return {
                 ...state,
-                isTaskListJumpMenuOpen: false,
+                isJumpMenuOpen: false,
             }
         
         case ActionTypes.SET_IS_SHUTTING_DOWN_FLAG:
@@ -392,6 +432,12 @@ export function appReducer(state, action) {
             return {
                 ...state,
                 appSettingsMenuPage: action.value,
+            }
+
+        case ActionTypes.SET_IS_INDUCTING:
+            return {
+                ...state,
+                isInducting: action.value,
             }
 
         case ActionTypes.SET_DATABASE_INFO:
@@ -414,15 +460,25 @@ export function appReducer(state, action) {
         
         case ActionTypes.RECEIVE_GENERAL_CONFIG: {
             if (isFirstTimeBoot(action.value)) {
+                console.log("First TIme Boot");
                 // First Time Boot.
                 return {
                     ...state,
                     generalConfig: action.value,
                     isDexieConfigLoadComplete: true,
-                    isAppSettingsOpen: true,
-                    isSidebarOpen: true,
-                    appSettingsMenuPage: 'account',
+                    isOnboarding: true,
                     isInRegisterMode: true,
+                }
+            }
+
+            if (hasBeenUpdated(action.value) === true && state.isOnboarding === false) {
+                // App has just updated.
+                console.log("Updated");
+                return {
+                    ...state,
+                    generalConfig: action.value,
+                    isDexieConfigLoadComplete: true,
+                    isInducting: true,
                 }
             }
 
@@ -432,7 +488,8 @@ export function appReducer(state, action) {
                     ...state,
                     generalConfig: action.value,
                     isDexieConfigLoadComplete: true,
-                    projects: maybeReSortProjects(state, action.value) // Returns re sorted projects if generalConfig.sortProjectsBy has changed. 
+                    projects: maybeReSortProjects(state, action.value), // Returns re sorted projects if generalConfig.sortProjectsBy has changed.
+                    selectedMuiThemeId: action.value.selectedMuiThemeId !== undefined ? action.value.selectedMuiThemeId : state.selectedMuiThemeId, 
                 }
             }
         }
@@ -456,6 +513,21 @@ export function appReducer(state, action) {
                 ...state,
                 isAppSettingsOpen: action.value,
                 ignoreFullscreenTrigger: true, // Stops the App toggling to Fullscreen imediately as the User selects the option.
+            }
+        }
+
+        case ActionTypes.SET_IS_ONBOARDING: {
+            return {
+                ...state,
+                isOnboarding: action.value,
+                isAppDrawerOpen: action.value === false,
+            }
+        }
+
+        case ActionTypes.SET_QUICK_ITEM_SELECT_DIALOG: {
+            return {
+                ...state,
+                quickItemSelectDialog: action.value,
             }
         }
 
@@ -507,6 +579,7 @@ export function appReducer(state, action) {
                 isLoggedIn: action.value,
                 isLoggingIn: false,
                 isInRegisterMode: false,
+                enableStates: { ...state.enableStates, newProject: action.value}
             }
         }
         
@@ -524,13 +597,11 @@ export function appReducer(state, action) {
             }
         }
 
-        case ActionTypes.POST_SNACKBAR_MESSAGE: {
+        case ActionTypes.SET_GENERAL_SNACKBAR: {
             return {
                 ...state,
-                isSnackbarOpen: true,
-                snackbarMessage: action.message,
-                isSnackbarSelfDismissing: action.isSelfDismissing,
-                snackbarType: action.snackbarType
+                generalSnackbar: action.value,
+                isASnackbarOpen: action.value.isOpen,
             }
         }
 
@@ -560,9 +631,11 @@ export function appReducer(state, action) {
                 remoteProjects: [],
                 remoteProjectIds: [],
                 taskLists: [],
+                filteredTaskLists: [],
                 localTaskLists: [],
                 remoteTaskLists: [],
                 tasks: [],
+                filteredTasks: [],
                 incompletedLocalTasks: [],
                 completedLocalTasks: [],
                 incompletedRemoteTasks: [],
@@ -575,18 +648,22 @@ export function appReducer(state, action) {
         }
 
         case ActionTypes.SET_UPDATING_INVITE_IDS:
-        return {
-            ...state,
-            updatingInviteIds: action.value,
-        }
-
-        case ActionTypes.SET_IS_SHARE_MENU_OPEN: {
             return {
                 ...state,
-                isShareMenuOpen: action.value,
-                userInviteMessage: action.value === false ? '' : state.userInviteMessage,
+                updatingInviteIds: action.value,
             }
-        }
+
+        case ActionTypes.OPEN_SHARE_MENU:
+            return {
+                ...state,
+                openShareMenuId: action.value,
+            }
+
+        case ActionTypes.CLOSE_SHARE_MENU:
+            return {
+                ...state,
+                openShareMenuId: -1,
+            }
 
         case ActionTypes.SET_IS_SHARE_MENU_WAITING: {
             return {
@@ -616,6 +693,21 @@ export function appReducer(state, action) {
             }
         }
 
+        case ActionTypes.RECEIVE_LOCAL_MUI_THEMES: {
+            return {
+                ...state,
+                localMuiThemes: action.value,
+                muiThemes: [...action.value]
+            }
+        }
+
+        case ActionTypes.SELECT_MUI_THEME: {
+            return {
+                ...state,
+                selectedMuiThemeId: action.value,
+            }
+        }
+
         case ActionTypes.RECEIVE_REMOTE_PROJECT_IDS: {
             return {
                 ...state,
@@ -629,7 +721,7 @@ export function appReducer(state, action) {
                 showOnlySelfTasks: action.value,
                 openTaskOptionsId: -1,
                 selectedTask: {taskListWidgetId: -1, taskId: -1, isInputOpen: false},
-
+                filteredTasks: filterTasksByProject(state.tasks, state.selectedProjectId, action.value),
             }
         }
 
@@ -690,6 +782,7 @@ export function appReducer(state, action) {
             return {
                 ...state,
                 openTaskInspectorId: action.value,
+                openTaskInspectorEntity: action.value === -1 ? null : extractTask(state.tasks, action.value),
             }
         
         case ActionTypes.SET_SELECTED_PROJECT_LAYOUT_TYPE:
@@ -697,6 +790,51 @@ export function appReducer(state, action) {
                 ...state,
                 selectedProjectLayoutType: action.value,
                 selectedProjectLayout: getSelectedProjectLayout(state.selectedProjectId, state.members, state.projectLayoutsMap)
+            }
+
+        case ActionTypes.SET_INFORMATION_DIALOG:
+            return {
+                ...state,
+                informationDialog: action.value,
+            }
+
+        case ActionTypes.SET_ITEM_SELECT_DIALOG: {
+            return {
+                ...state,
+                itemSelectDialog: action.value,
+            }
+        }
+        
+        case ActionTypes.SET_CONFIRMATION_DIALOG:
+            return {
+                ...state,
+                confirmationDialog: action.value,
+            }
+        
+        case ActionTypes.OPEN_CHECKLIST_SETTINGS:
+            return {
+                ...state,
+                openChecklistSettingsId: action.taskListId,
+                openChecklistSettingsEntity: action.existingChecklistSettings,
+            }
+
+        case ActionTypes.CLOSE_CHECKLIST_SETTINGS:
+            return {
+                ...state,
+                openChecklistSettingsId: -1,
+                openChecklistSettingsEntity: null,
+            }
+
+        case ActionTypes.STEP_ONBOARDER_FORWARD:
+            return {
+                ...state,
+                onboarderStep: state.onboarderStep++,
+            }
+        
+        case ActionTypes.STEP_ONBOARDER_BACKWARDS:
+            return {
+                ...state,
+                onboarderStep: state.onboarderStep--,
             }
 
         default:
@@ -813,25 +951,25 @@ function getProjectSelectorIndicatorsHelper(tasks) {
         if ((item.dueDate !== "" && item.isComplete !== true) || hasUnseenComments) {
             // Create an entry in returnList if not already existing.
             if (returnList[item.project] == undefined) {
-                returnList[item.project] = { greens: 0, yellows: 0, yellowReds: 0, reds: 0, hasUnseenComments: true };
+                returnList[item.project] = { later: 0, soon: 0, today: 0, overdue: 0, hasUnseenComments: true };
             }
 
-            var { className } = ParseDueDate(item.isComplete, item.dueDate);
-            switch (className) {
-                case "DueDate Later":
-                    returnList[item.project].greens += 1;
+            var { type } = ParseDueDate(item.isComplete, item.dueDate);
+            switch (type) {
+                case "later":
+                    returnList[item.project].later += 1;
                     break;
 
-                case "DueDate Soon":
-                    returnList[item.project].yellows += 1;
+                case "soon":
+                    returnList[item.project].soon += 1;
                     break;
 
-                case "DueDate Today":
-                    returnList[item.project].yellowReds += 1;
+                case "today":
+                    returnList[item.project].today += 1;
                     break;
 
-                case "DueDate Overdue":
-                    returnList[item.project].reds += 1;
+                case "overdue":
+                    returnList[item.project].overdue += 1;
                     break;
 
                 default:
@@ -881,3 +1019,85 @@ function getSelectedProjectLayout(projectId, members, projectLayoutsMap) {
 
       return { ...localLayoutsMap, ...remoteLayoutsMap };
   }
+
+  function extractTask(tasks, taskId) {
+      return tasks.find( item => {
+          return item.uid === taskId;
+      })
+  }
+
+  function updateOpenTaskInspectorEntity(tasks, taskId) {
+      if (taskId === -1) {
+          // Task Inspector isn't open. No Update requried.
+          return null;
+      }
+
+      else {
+          return extractTask(tasks, taskId);
+      }
+  }
+
+  function updateOpenChecklistSettingsEntity(taskLists, taskListId) {
+      if (taskListId === -1) {
+          // Checklist Settings isn't open. No update requried;
+          return null;
+      }
+
+      else {
+          let taskList = taskLists.find(item => {
+              return item.uid === taskListId;
+          })
+
+          if (taskList) {
+              return taskList.settings.checklistSettings;
+          }
+
+          return null;
+      }
+  }
+
+  function filterTaskListsByProject(taskLists, projectId) {
+      if (projectId === -1 || projectId === undefined || taskLists === undefined) {
+          return [];
+      }
+
+      return taskLists.filter(item => {
+          return item.project === projectId;
+      })
+  }
+
+  function filterTasksByProject(tasks, projectId, showOnlySelfTasks) {
+    if (projectId === -1 || projectId === undefined || tasks === undefined) {
+        return [];
+    }
+
+    let selfTasksExpression = showOnlySelfTasks === true ? 
+    (assignedToId) => { return assignedToId === getUserUid() } : () => { return true }
+
+    return tasks.filter(item => {
+        return item.project === projectId && selfTasksExpression(item.assignedTo);
+    })
+  }
+
+  function maybeForceFocusTaskList(existingValue, filteredTaskLists) {
+      if (filteredTaskLists.length >= 1) {
+          return filteredTaskLists[0].uid;
+      }
+
+      else {
+          return existingValue;
+      }
+  }
+
+  function hasBeenUpdated(generalConfig) {
+    if (generalConfig.appVersion === undefined) {
+      return true;
+
+      // In future.
+      // generalConfig.appVersion !== HANDBALL_VERSION
+    }
+
+    else {
+        return false;
+    }
+}

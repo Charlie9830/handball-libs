@@ -3,8 +3,9 @@ import { appReducer } from './reducers/index';
 import Logger from 'redux-logger';
 import ReduxThunk from 'redux-thunk';
 import { setupFirebase, getFirestore, getAuth, getFunctions, AccountConfigFallback } from '../pounder-firebase';
-import { ProjectLayoutStore, CssConfigStore } from '../pounder-stores';
+import { ProjectLayoutStore, CssConfigStore, MuiThemeFactory, ThemeFactory } from '../pounder-stores';
 import { initializeDexie, getDexie, generalConfigFallback } from '../pounder-dexie';
+import { DefaultTheme } from '../pounder-themes';
 
 export var includeMetadataChanges = { includeMetadataChanges: false }
 
@@ -34,9 +35,11 @@ var initialState = {
     remoteProjects: [],
     remoteProjectIds: [],
     taskLists: [],
+    filteredTaskLists: [],
     localTaskLists: [],
     remoteTaskLists: [],
     tasks: [],
+    filteredTasks: [],
     incompletedLocalTasks: [],
     completedLocalTasks: [],
     incompletedRemoteTasks: [],
@@ -48,7 +51,9 @@ var initialState = {
     projectLayoutsMap: {},
     localProjectLayouts: [],
     remoteProjectLayouts: [],
-    selectedTask: {taskListWidgetId: -1, taskId: -1, isInputOpen: false},
+    selectedTask: { taskListWidgetId: -1, taskId: -1, isInputOpen: false },
+    localMuiThemes: [],
+    muiThemes: [ DefaultTheme ],
     selectedProjectId: -1,
     isSelectedProjectRemote: false,
     isATaskMoving: false,
@@ -65,7 +70,7 @@ var initialState = {
     projectLayoutsHavePendingWrites: false,
     taskListsHavePendingWrites: false,
     tasksHavePendingWrites: false,
-    isTaskListJumpMenuOpen: false,
+    isJumpMenuOpen: false,
     isShuttingDown: false,
     isStartingUp: true,
     appSettingsMenuPage: "general",
@@ -84,13 +89,9 @@ var initialState = {
     isLoggedIn: false,
     userEmail: "",
     displayName: "",
-    isSnackbarOpen: false,
-    snackbarMessage: "",
-    snackbarType: "infomation",
-    isSnackbarSelfDismissing: false,
     isUpdateSnackbarOpen: false,
-    isSidebarOpen: true,
-    isShareMenuOpen: false,
+    isAppDrawerOpen: true,
+    openShareMenuId: -1,
     isShareMenuWaiting: false,
     shareMenuMessage: "",
     shareMenuSubMessage: "",
@@ -98,7 +99,45 @@ var initialState = {
     updatingInviteIds: [],
     openTaskOptionsId: -1,
     showOnlySelfTasks: false,
-    floatingTextInput: { isOpen: false, currentText: '', targetType: '', niceTargetName: '', targetId: '' },
+    generalSnackbar: {
+        isOpen: false,
+        type: 'information',
+        message: '',
+        selfDismissTime: 0,
+        actionOptions: {
+            actionButtonText: 'Okay', onAction: () => {}
+        }
+    },
+    textInputDialog: { isOpen: false, text: "", label: "", title: "", onCancel: () => {}, onOkay: () => {} },
+    informationDialog: { isOpen: false, text: "", title: "", onOkay: () => {} },
+    confirmationDialog: {
+        isOpen: false,
+        text: "",
+        title: "",
+        affirmativeButtonText: "Okay",
+        negativeButtonText: "Cancel",
+        onAffirmative: () => {},
+        onNegative: () => {},
+    },
+    itemSelectDialog: {
+        isOpen: false,
+        title: "",
+        text: "",
+        items: [],
+        affirmativeButtonText: "Okay",
+        negativeButtonText: "Cancel",
+        onAffirmative: () => {},
+        onNegative: () => {},
+    },
+    quickItemSelectDialog: {
+        isOpen: false,
+        title: "",
+        text: "",
+        items: [],
+        negativeButtonText: "",
+        onSelect: () => {},
+        onNegative: () => {},
+    },
     isInRegisterMode: false,
     showCompletedTasks: false,
     isProjectMenuOpen: false,
@@ -108,13 +147,25 @@ var initialState = {
     isTaskCommentsPaginating: false,
     isAllTaskCommentsFetched: false,
     openTaskInspectorId: -1,
+    openTaskInspectorEntity: null,
     selectedProjectLayoutType: 'global',
+    openChecklistSettingsId: -1,
+    openChecklistSettingsEntity: null,
+    isASnackbarOpen: false,
+    selectedMuiThemeId: 'default',
+    enableStates: {
+        newProject: false,
+        newTaskFab: false,
+    },
+    isOnboarding: false,
+    onboarderStep: 0,
+    isInducting: false,
 }
 
 export var appStore = createStore(
     appReducer,
     initialState,
-applyMiddleware(ReduxThunk.withExtraArgument( { getFirestore, getAuth, getDexie, getFunctions } ), /* Logger */ )
+applyMiddleware(ReduxThunk.withExtraArgument( { getFirestore, getAuth, getDexie, getFunctions } ), /* Logger */)
 );
 
 // Types.

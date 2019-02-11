@@ -19,20 +19,24 @@
     "firebase-functions": "^1.1.0",
     "firestore-multibatch": "^1.0.1",
     "fuse.js": "^3.2.1",
-    "grunt-babel": "^7.0.0",
     "lorem-ipsum": "^1.0.5",
     "minimist": "^1.2.0",
     "moment": "^2.22.2",
     "redux": "^4.0.0",
     "redux-logger": "*",
     "redux-thunk": "^2.3.0",
-    "string-argv": "0.0.2"
+    "string-argv": "0.0.2",
+    "uuid": "^3.3.2"
   },
   "devDependencies": {
-    "babel-core": "^6.26.3",
+    "@babel/core": "^7.2.2",
+    "@babel/plugin-transform-async-to-generator": "^7.2.0",
+    "@babel/preset-env": "^7.2.3",
     "babel-plugin-transform-object-rest-spread": "^6.26.0",
     "babel-preset-env": "^1.7.0",
     "grunt": "^1.0.3",
+    "grunt-babel": "^8.0.0",
+    "grunt-contrib-copy": "^1.0.0",
     "load-grunt-tasks": "^4.0.0"
   }
 }
