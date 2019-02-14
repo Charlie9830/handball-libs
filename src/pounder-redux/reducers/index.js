@@ -381,7 +381,12 @@ export function appReducer(state, action) {
                 isTaskListJumpMenuOpen: false,
                 showOnlySelfTasks: false,
                 isAppDrawerOpen: action.projectId === -1 ? true : false,
-                enableStates: {...state.enableStates, newTaskFab: focusedTaskListId !== -1},
+                enableStates: { 
+                    ...state.enableStates,
+                    newTaskFab: focusedTaskListId !== -1,
+                    newTaskListFab: action.value !== -1,
+                    projectMenu: action.value !== -1,
+                },
                 filteredTasks: filterTasksByProject(state.tasks, action.projectId, state.showOnlySelfTasks),
                 filteredTaskLists: filteredTaskLists
             }

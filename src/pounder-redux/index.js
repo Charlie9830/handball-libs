@@ -156,6 +156,8 @@ var initialState = {
     enableStates: {
         newProject: false,
         newTaskFab: false,
+        newTaskListFab: false,
+        projectMenu: false,
     },
     isOnboarding: false,
     onboarderStep: 0,
