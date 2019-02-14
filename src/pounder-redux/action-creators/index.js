@@ -3188,6 +3188,13 @@ export function moveTaskViaDialogAsync(taskId, sourceTaskListId, sourceProjectId
 
         let destinationTaskListId = dialogResult.value;
 
+        dispatch(moveTaskAsync(taskId, destinationTaskListId));
+        
+    }
+}
+
+export function moveTaskAsync(taskId, destinationTaskListId) {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (destinationTaskListId === -1) {
             return;
         } 
@@ -3214,6 +3221,7 @@ export function moveTaskViaDialogAsync(taskId, sourceTaskListId, sourceProjectId
         }
     }
 }
+
 
 
 export function addNewTaskAsync() {
