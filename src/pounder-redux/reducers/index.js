@@ -842,6 +842,19 @@ export function appReducer(state, action) {
                 onboarderStep: state.onboarderStep--,
             }
 
+        case ActionTypes.SET_LAST_UNDO_ACTION:
+            let lastUndoAction = action.value === undefined ? null : action.value;
+            return {
+                ...state,
+                lastUndoAction: lastUndoAction,
+            }
+
+        case ActionTypes.SET_UNDO_SNACKBAR:
+            return {
+                ...state,
+                undoSnackbar: action.value,
+            }
+
         default:
             console.log("App Reducer is missing a Case for action:  " + action.type);
             return state;

@@ -29,6 +29,10 @@ export function initializeDexie() {
         setBuiltInThemes(tx);
     })
 
+    db.version(3).stores({
+        lastUndoAction: 'id',
+    })
+
     db.on("populate", () => {
         db.generalConfig.put({id: 0, value: { isFirstTimeBoot: true, appVersion: HANDBALL_VERSION }});
         setBuiltInThemes(db);

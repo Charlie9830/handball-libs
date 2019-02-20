@@ -238,6 +238,13 @@ export function setIsLoggingInFlag(isLoggingIn) {
     }
 }
 
+export function setLastUndoAction(value) {
+    return {
+        type: ActionTypes.SET_LAST_UNDO_ACTION,
+        value: value,
+    }
+}
+
 export function setAuthStatusMessage(message) {
     return {
         type: ActionTypes.SET_AUTH_STATUS_MESSAGE,
@@ -580,6 +587,13 @@ export function receiveRemoteProjectIds(ids) {
     return {
         type: ActionTypes.RECEIVE_REMOTE_PROJECT_IDS,
         value: ids
+    }
+}
+
+export function setUndoSnackbar(value) {
+    return {
+        type: ActionTypes.SET_UNDO_SNACKBAR,
+        value: value,
     }
 }
 
@@ -2392,6 +2406,11 @@ export function unsubscribeFromDatabaseAsync() {
         dispatch(unsubscribeProjectLayoutsAsync());
         dispatch(unsubscribeAccountConfigAsync());
         dispatch(unsubscribeInvitesAsync());
+        
+        // Clear last Undo Action.
+        getDexie().lastUndoAction.delete('0');
+        dispatch(setLastUndoAction(null));
+
     }
 }
 
@@ -2696,10 +2715,10 @@ export function updateTaskListSettingsAsync(taskListWidgetId, newValue) {
     }
 }
 
-export function removeTaskListAsync(taskListWidgetId) {
+export function removeTaskListAsync(taskListId) {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
-        if (taskListWidgetId !== -1) {
-            let taskListName = getTaskListName(getState().taskLists, taskListWidgetId);
+        if (taskListId !== -1) {
+            let taskListName = getTaskListName(getState().taskLists, taskListId);
 
             let dialogResult = await postConfirmationDialog(
                 dispatch,
@@ -2714,47 +2733,29 @@ export function removeTaskListAsync(taskListWidgetId) {
                 return;
             }
 
-            // Update Firestore.
-            var selectedProjectId = getState().selectedProjectId;
-            var isCurrentProjectRemote = isProjectRemote(getState, selectedProjectId);
+            let ref = getTaskListRef(getFirestore, getState, taskListId);
+            let selectedProjectId = getState().selectedProjectId;
 
-            // Collect related TaskIds.
-            var taskIds = collectTaskListRelatedTaskIds(getState().tasks, taskListWidgetId);
-
-            // Build Batch.
-            var batch = new FirestoreBatchPaginator(getFirestore());
-
-            if (isRemovingLastTaskList(getState, selectedProjectId)) {
-                // We are about to remove the last Task list. Queue up a request to delete any remaining Project Layouts.
-                var projectLayoutRef = getProjectLayoutRef(getFirestore, getState, selectedProjectId);
-                batch.update(projectLayoutRef.doc(selectedProjectId), { layouts: [] });
-            }
-
-            // Task list
-            var taskListRef = getTaskListRef(getFirestore, getState, taskListWidgetId);
-            batch.delete(taskListRef);
-
-            // Tasks.
-            if (isCurrentProjectRemote) {
-                var selectedProjectId = selectedProjectId;
-                taskIds.forEach(id => {
-                    batch.delete(getFirestore().collection(REMOTES).doc(selectedProjectId).collection(TASKS).doc(id));
-                })
-            }
-
-            else {
-                taskIds.forEach(id => {
-                    batch.delete(getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc(id));
-                })
-            }
-
+            // Build Undo Action.
+            pushUndoActionAsync(
+                dispatch,
+                getState,
+                getFirestore,
+                getDexie,
+                {
+                    type: 'taskListDelete',
+                    refPath: ref.path,
+                    projectId: selectedProjectId,
+                }
+            )
+            
             dispatch(setFocusedTaskListId(-1));
 
             // Project updated metadata.
             updateProjectUpdatedTime(getState, getFirestore, selectedProjectId);
             
             try {
-                await batch.commit();
+                await ref.update({isDeleted: true});
             }
 
             catch(error) {
@@ -3086,7 +3087,7 @@ export function removeSelectedTaskAsync() {
 
         var taskId = getState().selectedTask.taskId;
         if (taskId !== -1) {
-            deleteTaskAsync(getFirestore, getState, taskId).then(() => {
+            deleteTaskAsync(dispatch, getFirestore, getState, getDexie, taskId).then(() => {
                 // Careful what you do here. Promises don't resolve Offline.
             }).catch(error => {
                 handleFirebaseUpdateError(error, getState(), dispatch);
@@ -3102,7 +3103,7 @@ export function removeSelectedTaskAsync() {
 export function removeTaskAsync(taskId) {
     return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (taskId !== -1) {
-            deleteTaskAsync(getFirestore, getState, taskId).then(() => {
+            deleteTaskAsync(dispatch, getFirestore, getState, getDexie, taskId).then(() => {
                 // Careful what you do here. Promises don't resolve Offline.
             }).catch(error => {
                 handleFirebaseUpdateError(error, getState(), dispatch);
@@ -3115,24 +3116,31 @@ export function removeTaskAsync(taskId) {
     }
 }
 
+async function deleteTaskAsync(dispatch, getFirestore, getState, getDexie, taskId) {
+        // Undo Stack
+        let taskRef = getTaskRef(getFirestore, getState, taskId);
 
-function deleteTaskAsync(getFirestore, getState, taskId) {
-    return new Promise((resolve, reject) => {
-        // Update Firestore.    
-        // Build Batch and Execute.
-        var batch = getFirestore().batch();
-        var taskRef = getTaskRef(getFirestore, getState, taskId);
-        batch.delete(taskRef);
-
-        batch.commit().then(() => {
-            resolve();
-        }).catch(error => {
-            reject(error);
-        });
+        pushUndoActionAsync(
+            dispatch,
+            getState,
+            getFirestore,
+            getDexie,
+            {
+                type: 'taskDelete',
+                refPath: taskRef.path,
+            }
+        )
 
         // Project updated metadata.
         updateProjectUpdatedTime(getState, getFirestore, getState().selectedProjectId);
-    })
+
+        try {
+            await taskRef.update({isDeleted: true})
+        }
+        
+        catch(error) {
+            handleFirebaseUpdateError(error, getState(), dispatch);
+        }
 }
 
 export function updateTaskListNameAsync(taskListId, currentName) {
@@ -3219,6 +3227,13 @@ export function moveTaskAsync(taskId, destinationTaskListId) {
         catch(error) {
             handleFirebaseUpdateError(error, getState(), dispatch);
         }
+    }
+}
+
+export function getLastUndoActionAsync() {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        let value = await getDexie().lastUndoAction.get('0');
+        dispatch(setLastUndoAction(value));
     }
 }
 
@@ -3434,6 +3449,10 @@ function handleTasksSnapshot(getState, dispatch, isRemote, snapshot, remoteProje
         snapshot.forEach(doc => {
             let task = doc.data();
 
+            if (task.isDeleted) {
+                return;
+            }
+
             // Coercion
             task.dueDate = task.dueDate === null ? "" : task.dueDate;
             task.metadata = task.metadata === undefined ? { ...new TaskMetadataStore("","","","","","") } : task.metadata;
@@ -3501,6 +3520,10 @@ function handleTaskListsSnapshot(getState, dispatch, isRemote, snapshot, remoteP
             if (doc.data().isMoving) {
                 // Task list has been moved to another Project but Cloud function has not cleaned it up yet, don't add it to
                 // State.
+                return;
+            }
+
+            if (doc.data().isDeleted) {
                 return;
             }
 
@@ -4498,4 +4521,144 @@ function getTaskListName(taskLists, taskListId) {
     }
 
     return taskList.taskListName;
+}
+
+function pushUndoActionAsync(dispatch, getState, getFirestore, getDexie, undoAction) {
+    // Maybe Post snackbar. We don't post a snackbar for super common actions so we don't berate the user with snackbars.
+    switch(undoAction.type) {
+        case "taskDelete":
+            postUndoSnackbar(dispatch, getState, getFirestore, getDexie, "Task deleted");
+            break;
+
+        case "taskListDelete":
+            postUndoSnackbar(dispatch, getState, getFirestore, getDexie, "List deleted"  );
+    }
+
+    // Pop the last Undo Action and Commit it.
+    let lastUndoAction = getState().lastUndoAction;
+    if (lastUndoAction !== null && lastUndoAction !== undefined ) {
+        commitUndoActionAsync(dispatch, getState, getFirestore, lastUndoAction);
+    }
+
+    // Update State with the new latest Action.
+    dispatch(setLastUndoAction(undoAction));
+
+    // Update dexie.
+    getDexie().lastUndoAction.put({...undoAction, id: '0'});
+}
+
+async function commitUndoActionAsync(dispatch, getState, getFirestore, undoAction) {
+    // Task Delete
+    if (undoAction.type === 'taskDelete') {
+        let ref = getFirestore().doc(undoAction.refPath);
+        
+        try {
+            await ref.delete();
+        }
+
+        catch(error) {
+            handleFirebaseUpdateError(error, getState(), dispatch);
+        }
+    }
+
+    // Task List Delete
+    if (undoAction.type === 'taskListDelete') {
+        let ref = getFirestore().doc(undoAction.refPath);
+        deleteTaskListAsync(dispatch, getState, getFirestore, undoAction.projectId, ref);
+    }
+}
+
+async function deleteTaskListAsync(dispatch, getState, getFirestore, projectId, ref) {
+    // Update Firestore.
+    let taskListId = ref.id;
+    var isCurrentProjectRemote = isProjectRemote(getState, projectId);
+
+    // Collect related TaskIds.
+    var taskIds = collectTaskListRelatedTaskIds(getState().tasks, taskListId);
+
+    // Build Batch.
+    var batch = new FirestoreBatchPaginator(getFirestore());
+
+    if (isRemovingLastTaskList(getState, projectId)) {
+        // We are about to remove the last Task list. Queue up a request to delete any remaining Project Layouts.
+        var projectLayoutRef = getProjectLayoutRef(getFirestore, getState, projectId);
+        batch.update(projectLayoutRef.doc(projectId), { layouts: [] });
+    }
+
+    // Task list
+    batch.delete(ref);
+
+    // Tasks.
+    if (isCurrentProjectRemote) {
+        var projectId = projectId;
+        taskIds.forEach(id => {
+            batch.delete(getFirestore().collection(REMOTES).doc(projectId).collection(TASKS).doc(id));
+        })
+    }
+
+    else {
+        taskIds.forEach(id => {
+            batch.delete(getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc(id));
+        })
+    }
+
+    try {
+        await batch.commit();
+    }
+
+    catch(error) {
+        handleFirebaseUpdateError(error, getState(), dispatch);
+    }
+    
+}
+
+async function undoAsync(dispatch, getState, getFirestore, getDexie) {
+    let lastUndoAction = getState().lastUndoAction;
+    
+    if (lastUndoAction === null || lastUndoAction === undefined) {
+        return;
+    }
+
+    if (lastUndoAction.type === 'taskDelete') {
+        getFirestore().doc(lastUndoAction.refPath).update({isDeleted: false});
+
+        getDexie().lastUndoAction.delete('0');
+        dispatch(setLastUndoAction(null));
+    }
+
+    if (lastUndoAction.type === "taskListDelete") {
+        getFirestore().doc(lastUndoAction.refPath).update({isDeleted: false});
+        
+        getDexie().lastUndoAction.delete('0');
+        dispatch(setLastUndoAction(null));
+    }
+}
+
+async function postUndoSnackbar(dispatch, getState, getFirestore, getDexie, text) {
+    let undoFired = false; 
+    let onUndo = () => {
+        undoFired = true;
+        dispatch(setUndoSnackbar({
+            isOpen: false,
+            text: text,
+            onUndo: () => {},
+        }))
+
+        undoAsync(dispatch, getState, getFirestore, getDexie);
+    }
+
+    dispatch(setUndoSnackbar({
+        isOpen: true,
+        text: text,
+        onUndo: onUndo,
+    }))
+
+    await wait(4000);
+    if (undoFired === false) {
+        dispatch(setUndoSnackbar({
+            isOpen: false,
+            text: text,
+            onUndo: () => {}
+        }))
+    }
 }

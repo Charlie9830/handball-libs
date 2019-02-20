@@ -108,6 +108,11 @@ var initialState = {
             actionButtonText: 'Okay', onAction: () => {}
         }
     },
+    undoSnackbar: {
+        isOpen: false,
+        text: '',
+        onUndo: () => {}
+    },
     textInputDialog: { isOpen: false, text: "", label: "", title: "", onCancel: () => {}, onOkay: () => {} },
     informationDialog: { isOpen: false, text: "", title: "", onOkay: () => {} },
     confirmationDialog: {
@@ -162,6 +167,7 @@ var initialState = {
     isOnboarding: false,
     onboarderStep: 0,
     isInducting: false,
+    lastUndoAction: null,
 }
 
 export var appStore = createStore(
