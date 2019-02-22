@@ -168,6 +168,7 @@ var initialState = {
     onboarderStep: 0,
     isInducting: false,
     lastUndoAction: null,
+    canUndo: false,
 }
 
 export var appStore = createStore(

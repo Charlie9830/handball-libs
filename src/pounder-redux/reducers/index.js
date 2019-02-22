@@ -847,6 +847,7 @@ export function appReducer(state, action) {
             return {
                 ...state,
                 lastUndoAction: lastUndoAction,
+                canUndo: lastUndoAction !== null,
             }
 
         case ActionTypes.SET_UNDO_SNACKBAR:

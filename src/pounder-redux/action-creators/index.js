@@ -2067,6 +2067,12 @@ export function inviteUserToProjectAsync(targetEmail, projectId) {
     }
 }
 
+export function undoLastActionAsync() {
+    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+        undoAsync(dispatch, getState, getFirestore, getDexie);
+    }
+}
+
 export function updateMemberRoleAsync(userId, projectId, newRole) {
     return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
         if (userId === getUserUid()) {
@@ -2733,8 +2739,11 @@ export function removeTaskListAsync(taskListId) {
                 return;
             }
 
-            let ref = getTaskListRef(getFirestore, getState, taskListId);
+            let taskListRef = getTaskListRef(getFirestore, getState, taskListId);
             let selectedProjectId = getState().selectedProjectId;
+            let relatedTaskRefs = collectTaskListRelatedTaskIds(getState().tasks, taskListId).map( id => {
+                return getTaskRef(getFirestore, getState, id);
+            });
 
             // Build Undo Action.
             pushUndoActionAsync(
@@ -2744,8 +2753,10 @@ export function removeTaskListAsync(taskListId) {
                 getDexie,
                 {
                     type: 'taskListDelete',
-                    refPath: ref.path,
+                    refPath: taskListRef.path,
                     projectId: selectedProjectId,
+                    relatedTaskRefPaths: relatedTaskRefs.map(item => { return item.path}),
+                    friendlyText: 'list delete'
                 }
             )
             
@@ -2753,9 +2764,17 @@ export function removeTaskListAsync(taskListId) {
 
             // Project updated metadata.
             updateProjectUpdatedTime(getState, getFirestore, selectedProjectId);
+
+            let batch = getFirestore().batch();
+            
+            for (let ref of relatedTaskRefs) {
+                batch.update(ref, { isDeleted: true });
+            }
+
+            batch.update(taskListRef, { isDeleted: true });
             
             try {
-                await ref.update({isDeleted: true});
+                await batch.commit();
             }
 
             catch(error) {
@@ -2827,7 +2846,7 @@ export function removeProjectAsync(projectId) {
 }
 
 export function removeLocalProjectAsync(projectId) {
-    return (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
+    return async (dispatch, getState, { getFirestore, getAuth, getDexie, getFunctions }) => {
             if (projectId === -1) {
                 return;
             }
@@ -2835,41 +2854,85 @@ export function removeLocalProjectAsync(projectId) {
             dispatch(setShowCompletedTasksAsync(false));
             dispatch(selectProject(-1));
 
-            var taskListIds = getState().taskLists.filter(item => {
-                return item.project === projectId;
-            }).map(taskList => { return taskList.uid });
+            let projectRef = getProjectRef(getFirestore, getState, projectId);
+            let projectLayoutRef = getProjectLayoutRef(getFirestore, getState, projectId).doc(projectId);
+            let taskListRefs = getProjectRelatedTaskListRefs(getState, getFirestore, projectId);
+            let taskRefs = getProjectRelatedTaskRefs(getState, getFirestore, projectId);
 
-            var taskIds = collectProjectRelatedTaskIds(getState().tasks, projectId);
+            pushUndoActionAsync(
+                dispatch,
+                getState,
+                getFirestore,
+                getDexie,
+                {
+                    type: 'localProjectDelete',
+                    projectId: projectId,
+                    projectRefPath: projectRef.path,
+                    projectLayoutRefPath: projectLayoutRef.path,
+                    taskListRefPaths: taskListRefs.map( item => { return item.path }),
+                    taskRefPaths: taskRefs.map( item => { return item.path }),
+                    friendlyText: 'project delete'
+                }
+            )
 
-            // Build Updates.
-            var batch = new FirestoreBatchPaginator(getFirestore());
-
-            // Local
-            // TaskLists.
-            taskListIds.forEach(id => {
-                batch.delete(getFirestore().collection(USERS).doc(getUserUid()).collection(TASKLISTS).doc(id));
-            })
-
-            // Tasks
-            taskIds.forEach(id => {
-                batch.delete(getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc(id));
-            })
-            
-            // Project Layout
-            var projectLayoutId = projectId;
-            if (projectLayoutId !== -1) {
-                batch.delete(getProjectLayoutRef(getFirestore, getState, projectLayoutId).doc(projectLayoutId));
+            try {
+                await projectRef.update({ isDeleted: true });
             }
 
-            // Project.
-            batch.delete(getFirestore().collection(USERS).doc(getUserUid()).collection(PROJECTS).doc(projectId));
-
-            // Execute the Batch.
-            batch.commit().then(() => {
-                // Carefull what you do here, promises don't resolve if you are offline.
-            }).catch(error => {
+            catch (error) {
                 handleFirebaseUpdateError(error, getState(), dispatch);
-            })
+            }
+    }
+}
+
+function getProjectRelatedTaskRefs(getState, getFirestore, projectId) {
+    let relatedTaskIds = getState().tasks.filter(item => { return item.project === projectId }).map(item => {
+        return item.uid;
+    })
+
+    return relatedTaskIds.map( id => {
+        return getTaskRef(getFirestore, getState, id);
+    })
+}
+
+function getProjectRelatedTaskListRefs(getState, getFirestore, projectId) {
+    let relatedTaskListIds = getState().taskLists.filter(item => { return item.project === projectId }).map(
+        item => { return item.uid }
+    );
+
+    return relatedTaskListIds.map( id => {
+        return getTaskListRef(getFirestore, getState, id );
+    })
+
+}
+
+async function deleteLocalProject(dispatch, getFirestore, getState, projectId, projectRef, projectLayoutRef, taskListRefs, taskRefs) {
+    // Build Updates.
+    var batch = new FirestoreBatchPaginator(getFirestore());
+
+    // TaskLists.
+    for (let taskListRef of taskListRefs) {
+        batch.delete(taskListRef);
+    }
+
+    // Tasks
+    for (let taskRef of taskRefs) {
+        batch.delete(taskRef);
+    }
+    
+    // Project Layout
+    batch.delete(projectLayoutRef);
+
+    // Project.
+    batch.delete(projectRef);
+
+    // Execute the Batch.
+    try {
+        await batch.commit();
+    }
+
+    catch (error) {
+        handleFirebaseUpdateError(error, getState(), dispatch);
     }
 }
 
@@ -3128,6 +3191,7 @@ async function deleteTaskAsync(dispatch, getFirestore, getState, getDexie, taskI
             {
                 type: 'taskDelete',
                 refPath: taskRef.path,
+                friendlyText: 'task delete'
             }
         )
 
@@ -3394,7 +3458,12 @@ export function getProjectsAsync() {
             if (snapshot.docChanges().length > 0) {
                 var projects = [];
                 snapshot.forEach(doc => {
-                    projects.push(doc.data());
+                    let data = doc.data();
+                    if (data.isDeleted === true) {
+                        return;
+                    }
+                    
+                    projects.push(data);
                 })
 
                 dispatch(receiveLocalProjects(projects));
@@ -4527,11 +4596,14 @@ function pushUndoActionAsync(dispatch, getState, getFirestore, getDexie, undoAct
     // Maybe Post snackbar. We don't post a snackbar for super common actions so we don't berate the user with snackbars.
     switch(undoAction.type) {
         case "taskDelete":
-            postUndoSnackbar(dispatch, getState, getFirestore, getDexie, "Task deleted");
+            postUndoSnackbar(dispatch, getState, getFirestore, getDexie, 6000, "Task deleted");
             break;
 
         case "taskListDelete":
-            postUndoSnackbar(dispatch, getState, getFirestore, getDexie, "List deleted"  );
+            postUndoSnackbar(dispatch, getState, getFirestore, getDexie, 6000, "List deleted"  );
+
+        case "localProjectDelete":
+            postUndoSnackbar(dispatch, getState, getFirestore, getDexie, 10000, "Project deleted");
     }
 
     // Pop the last Undo Action and Commit it.
@@ -4564,17 +4636,26 @@ async function commitUndoActionAsync(dispatch, getState, getFirestore, undoActio
     // Task List Delete
     if (undoAction.type === 'taskListDelete') {
         let ref = getFirestore().doc(undoAction.refPath);
-        deleteTaskListAsync(dispatch, getState, getFirestore, undoAction.projectId, ref);
+        let relatedTaskRefs = undoAction.relatedTaskRefPaths.map( refPath => { return getFirestore().doc(refPath)})
+
+        deleteTaskListAsync(dispatch, getState, getFirestore, undoAction.projectId, ref, relatedTaskRefs);
+    }
+
+    // Local Project Delete
+    if (undoAction.type === "localProjectDelete") {
+        let projectId = undoAction.projectId;
+        let projectRef = getFirestore().doc(undoAction.projectRefPath);
+        let projectLayoutRef = getFirestore().doc(undoAction.projectLayoutRefPath);
+        let taskListRefs = undoAction.taskListRefPaths.map( refPath => { return getFirestore().doc(refPath) });
+        let taskRefs = undoAction.taskRefPaths.map( refPath => { return getFirestore().doc(refPath) });
+
+        deleteLocalProject(dispatch, getFirestore, getState, projectId, projectRef, projectLayoutRef, taskListRefs, taskRefs);
     }
 }
 
-async function deleteTaskListAsync(dispatch, getState, getFirestore, projectId, ref) {
+async function deleteTaskListAsync(dispatch, getState, getFirestore, projectId, taskListRef, relatedTaskRefs) {
     // Update Firestore.
-    let taskListId = ref.id;
-    var isCurrentProjectRemote = isProjectRemote(getState, projectId);
-
-    // Collect related TaskIds.
-    var taskIds = collectTaskListRelatedTaskIds(getState().tasks, taskListId);
+    let taskListId = taskListRef.id;
 
     // Build Batch.
     var batch = new FirestoreBatchPaginator(getFirestore());
@@ -4586,20 +4667,11 @@ async function deleteTaskListAsync(dispatch, getState, getFirestore, projectId, 
     }
 
     // Task list
-    batch.delete(ref);
+    batch.delete(taskListRef);
 
     // Tasks.
-    if (isCurrentProjectRemote) {
-        var projectId = projectId;
-        taskIds.forEach(id => {
-            batch.delete(getFirestore().collection(REMOTES).doc(projectId).collection(TASKS).doc(id));
-        })
-    }
-
-    else {
-        taskIds.forEach(id => {
-            batch.delete(getFirestore().collection(USERS).doc(getUserUid()).collection(TASKS).doc(id));
-        })
+    for (let ref of relatedTaskRefs) {
+        batch.delete(ref);
     }
 
     try {
@@ -4609,7 +4681,6 @@ async function deleteTaskListAsync(dispatch, getState, getFirestore, projectId, 
     catch(error) {
         handleFirebaseUpdateError(error, getState(), dispatch);
     }
-    
 }
 
 async function undoAsync(dispatch, getState, getFirestore, getDexie) {
@@ -4619,22 +4690,59 @@ async function undoAsync(dispatch, getState, getFirestore, getDexie) {
         return;
     }
 
+    // Task Delete
     if (lastUndoAction.type === 'taskDelete') {
-        getFirestore().doc(lastUndoAction.refPath).update({isDeleted: false});
-
-        getDexie().lastUndoAction.delete('0');
         dispatch(setLastUndoAction(null));
+
+        try {
+            getFirestore().doc(lastUndoAction.refPath).update({isDeleted: false});
+            getDexie().lastUndoAction.delete('0');
+        }
+        catch(error) {
+            throw error;
+        }
     }
 
+    // Task List Delete.
     if (lastUndoAction.type === "taskListDelete") {
-        getFirestore().doc(lastUndoAction.refPath).update({isDeleted: false});
-        
-        getDexie().lastUndoAction.delete('0');
+        let batch = getFirestore().batch();
+        batch.update(getFirestore().doc(lastUndoAction.refPath), { isDeleted: false });
+
+        for (let refPath of lastUndoAction.relatedTaskRefPaths) {
+            batch.update(getFirestore().doc(refPath), { isDeleted: false })
+        }
+
         dispatch(setLastUndoAction(null));
+
+        try {
+            batch.commit();
+            getDexie().lastUndoAction.delete('0');
+
+        }
+        catch(error) {
+            throw error;
+        }
+    }
+
+    // Local Project Delete.
+    if (lastUndoAction.type === 'localProjectDelete') {
+        let projectRef = getFirestore().doc(lastUndoAction.projectRefPath);
+        let projectId = lastUndoAction.projectId;
+
+        dispatch(setLastUndoAction(null));
+        dispatch(selectProject(projectId));
+
+        try {
+            projectRef.update({ isDeleted: false });
+            getDexie().lastUndoAction.delete('0');
+        }
+        catch(error) {
+            throw error;
+        }
     }
 }
 
-async function postUndoSnackbar(dispatch, getState, getFirestore, getDexie, text) {
+async function postUndoSnackbar(dispatch, getState, getFirestore, getDexie, timeout = 4000, text) {
     let undoFired = false; 
     let onUndo = () => {
         undoFired = true;
@@ -4653,7 +4761,7 @@ async function postUndoSnackbar(dispatch, getState, getFirestore, getDexie, text
         onUndo: onUndo,
     }))
 
-    await wait(4000);
+    await wait(timeout);
     if (undoFired === false) {
         dispatch(setUndoSnackbar({
             isOpen: false,
