@@ -238,6 +238,13 @@ export function setIsLoggingInFlag(isLoggingIn) {
     }
 }
 
+export function setIsAppDrawerCollapsed(value) {
+    return {
+        type: ActionTypes.SET_IS_APP_DRAWER_COLLAPSED,
+        value: value,
+    }
+}
+
 export function setLastUndoAction(value) {
     return {
         type: ActionTypes.SET_LAST_UNDO_ACTION,

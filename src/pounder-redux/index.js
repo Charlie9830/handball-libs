@@ -169,6 +169,7 @@ var initialState = {
     isInducting: false,
     lastUndoAction: null,
     canUndo: false,
+    isAppDrawerCollapsed: false,
 }
 
 export var appStore = createStore(

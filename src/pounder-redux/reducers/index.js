@@ -842,6 +842,12 @@ export function appReducer(state, action) {
                 onboarderStep: state.onboarderStep--,
             }
 
+        case ActionTypes.SET_IS_APP_DRAWER_COLLAPSED:
+            return {
+                ...state,
+                isAppDrawerCollapsed: action.value,
+            }
+
         case ActionTypes.SET_LAST_UNDO_ACTION:
             let lastUndoAction = action.value === undefined ? null : action.value;
             return {
