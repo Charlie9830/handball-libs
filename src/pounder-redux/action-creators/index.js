@@ -4358,8 +4358,8 @@ function postInformationDialog(dispatch, state, text, title) {
     return new Promise( (resolve, reject) => {
         let onOkay = (newValue) => {
             dispatch(setInformationDialog(false,
-                state.informationDialog.text,
-                state.informationDialog.title,
+                text,
+                title,
                 () => {},
             ))
 
@@ -4375,10 +4375,10 @@ function postQuickItemSelectDialog(dispatch, state, title, text, items, negative
         let onSelect = (value) => {
             dispatch(setQuickItemSelectDialog(
                 false,
-                state.quickItemSelectDialog.title,
-                state.quickItemSelectDialog.text,
-                state.quickItemSelectDialog.items,
-                state.quickItemSelectDialog.negativeButtonText,
+                title,
+                text,
+                items,
+                negativeButtonText,
                 () => {},
                 () => {},
             ))
@@ -4392,10 +4392,10 @@ function postQuickItemSelectDialog(dispatch, state, title, text, items, negative
         let onNegative = () => {
             dispatch(setQuickItemSelectDialog(
                 false,
-                state.quickItemSelectDialog.title,
-                state.quickItemSelectDialog.text,
-                state.quickItemSelectDialog.items,
-                state.quickItemSelectDialog.negativeButtonText,
+                title,
+                text,
+                items,
+                negativeButtonText,
                 () => {},
                 () => {},
             ))
@@ -4423,11 +4423,11 @@ function postItemSelectDialog(dispatch, state, title, text, items, affirmativeBu
         let onAffirmative = (value) => {
             dispatch(setItemSelectDialog(
                 false,
-                state.itemSelectDialog.title,
-                state.itemSelectDialog.text,
-                state.itemSelectDialog.items,
-                state.itemSelectDialog.affirmativeButtonText,
-                state.itemSelectDialog.negativeButtonText,
+                title,
+                text,
+                items,
+                affirmativeButtonText,
+                negativeButtonText,
                 () => {},
                 () => {},
             ))
@@ -4441,11 +4441,11 @@ function postItemSelectDialog(dispatch, state, title, text, items, affirmativeBu
         let onNegative = () => {
             dispatch(setItemSelectDialog(
                 false,
-                state.itemSelectDialog.title,
-                state.itemSelectDialog.text,
-                state.itemSelectDialog.items,
-                state.itemSelectDialog.affirmativeButtonText,
-                state.itemSelectDialog.negativeButtonText,
+                title,
+                text,
+                items,
+                affirmativeButtonText,
+                negativeButtonText,
                 () => {},
                 () => {},
             ))
@@ -4474,10 +4474,10 @@ function postConfirmationDialog(dispatch, state, text, title, affirmativeButtonT
         let onAffirmative = () => {
             dispatch(setConfirmationDialog(
                 false,
-                state.confirmationDialog.title,
-                state.confirmationDialog.text,
-                state.confirmationDialog.affirmativeButtonText,
-                state.confirmationDialog.negativeButtonText,
+                title,
+                text,
+                affirmativeButtonText,
+                negativeButtonText,
                 () => {},
                 () => {}
             ))
@@ -4488,10 +4488,10 @@ function postConfirmationDialog(dispatch, state, text, title, affirmativeButtonT
         let onNegative = () => {
             dispatch(setConfirmationDialog(
                 false,
-                state.confirmationDialog.title,
-                state.confirmationDialog.text,
-                state.confirmationDialog.affirmativeButtonText,
-                state.confirmationDialog.negativeButtonText,
+                title,
+                text,
+                affirmativeButtonText,
+                negativeButtonText,
                 () => {},
                 () => {}
             ))
@@ -4517,8 +4517,8 @@ function postGeneralSnackbar(dispatch, state, type, text, selfDismissTime, actio
         let onAction = () => {
             dispatch(setGeneralSnackbar(
                 false,
-                state.generalSnackbar.type,
-                state.generalSnackbar.message,
+                type,
+                message,
                 0,
                 { actionButtonText: actionButtonText, onAction: () => {} })
             )
@@ -4542,8 +4542,8 @@ function postGeneralSnackbar(dispatch, state, type, text, selfDismissTime, actio
             wait(selfDismissTime).then(() => {
                 dispatch(setGeneralSnackbar(
                     false,
-                    state.generalSnackbar.type,
-                    state.generalSnackbar.message,
+                    type,
+                    message,
                     0,
                     { actionButtonText: actionButtonText, onAction: () => {} })
                 )
