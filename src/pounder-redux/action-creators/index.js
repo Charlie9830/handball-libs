@@ -2951,7 +2951,7 @@ export function removeRemoteProjectAsync(projectId, preCondition) {
         // Post Confirmation Dialog.
         let projectName = getProjectName(getState().projects, projectId);
         let title = "Delete Project";
-        let text = `${projectName} will be deleted forever. Are you really sure you want to continue?`
+        let text = `${projectName} will be deleted forever. This can not be undone. Are you really sure you want to continue?`
         let affirmativeButtonText = `Delete`;
         let negativeButtonText = 'Cancel'
         
