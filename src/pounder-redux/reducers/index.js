@@ -1105,7 +1105,7 @@ function getSelectedProjectLayout(projectId, members, projectLayoutsMap) {
   }
 
   function maybeForceFocusTaskList(existingValue, filteredTaskLists) {
-      if (filteredTaskLists.length >= 1) {
+      if (filteredTaskLists.length === 1) {
           return filteredTaskLists[0].uid;
       }
 
