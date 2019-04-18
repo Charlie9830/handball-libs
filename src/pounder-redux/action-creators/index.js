@@ -4543,7 +4543,7 @@ function postGeneralSnackbar(dispatch, state, type, text, selfDismissTime, actio
                 dispatch(setGeneralSnackbar(
                     false,
                     type,
-                    message,
+                    text,
                     0,
                     { actionButtonText: actionButtonText, onAction: () => {} })
                 )
