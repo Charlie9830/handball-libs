@@ -58,7 +58,7 @@ export function setupFirebase(mode) {
         functions = firebase.functions();
 
         // Settings.
-        const settings = { timestampsInSnapshots: true};
+        const settings = {};
         firestore.settings(settings);
         firestore.enablePersistence();
 

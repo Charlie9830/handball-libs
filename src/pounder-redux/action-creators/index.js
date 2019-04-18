@@ -2306,11 +2306,11 @@ export function attachAuthListenerAsync() {
                     // A new user has just registered.
                     clearFirstTimeBootFlag(dispatch, getState);
 
-                    // Send them to the Welcome Page if on Desktop.
-                    if (HANDBALL_DEVICE === 'desktop') {
-                        dispatch(setIsAppSettingsOpen(true));
-                        dispatch(setAppSettingsMenuPage('welcome'));
-                    }
+                    // // Send them to the Welcome Page if on Desktop.
+                    // if (HANDBALL_DEVICE === 'desktop') {
+                    //     dispatch(setIsAppSettingsOpen(true));
+                    //     dispatch(setAppSettingsMenuPage('welcome'));
+                    // }
                     
 
                     //  Make a directory listing for them.
