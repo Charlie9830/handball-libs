@@ -4608,9 +4608,11 @@ function pushUndoActionAsync(dispatch, getState, getFirestore, getDexie, undoAct
 
         case "taskListDelete":
             postUndoSnackbar(dispatch, getState, getFirestore, getDexie, 6000, "List deleted"  );
+            break;
 
         case "localProjectDelete":
             postUndoSnackbar(dispatch, getState, getFirestore, getDexie, 10000, "Project deleted");
+            break;
     }
 
     // Pop the last Undo Action and Commit it.
