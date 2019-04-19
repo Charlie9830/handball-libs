@@ -292,7 +292,6 @@ export function appReducer(state, action) {
         case ActionTypes.RECEIVE_LOCAL_TASKLISTS:
             var newTaskLists = [...action.taskLists, ...state.remoteTaskLists];
             var newFilteredTaskLists = filterTaskListsByProject(newTaskLists, state.selectedProjectId);
-            var focusedTaskListId = maybeForceFocusTaskList(state.focusedTaskListId, newFilteredTaskLists);
             
             return {
                 ...state,
@@ -301,14 +300,12 @@ export function appReducer(state, action) {
                 localTaskLists: action.taskLists,
                 openChecklistSettingsEntity: updateOpenChecklistSettingsEntity(newTaskLists, state.openChecklistSettingsId),
                 filteredTaskLists: newFilteredTaskLists,
-                focusedTaskListId: focusedTaskListId,
-                enableStates: { ...state.enableStates, newTaskFab: focusedTaskListId !== -1 }
+                enableStates: { ...state.enableStates, newTaskFab: state.focusedTaskListId !== -1 }
             }
 
         case ActionTypes.RECEIVE_REMOTE_TASKLISTS:
             var newTaskLists = [...state.localTaskLists, ...action.taskLists];
             var newFilteredTaskLists = filterTaskListsByProject(newTaskLists, state.selectedProjectId);
-            var focusedTaskListId = maybeForceFocusTaskList(state.focusedTaskListId, newFilteredTaskLists);
 
             return {
                 ...state,
@@ -317,8 +314,7 @@ export function appReducer(state, action) {
                 remoteTaskLists: action.taskLists,
                 openChecklistSettingsEntity: updateOpenChecklistSettingsEntity(newTaskLists, state.openChecklistSettingsId),
                 filteredTaskLists: newFilteredTaskLists,
-                focusedTaskListId: focusedTaskListId,
-                enableStates: { ...state.enableStates, newTaskFab: focusedTaskListId !== -1 }
+                enableStates: { ...state.enableStates, newTaskFab: state.focusedTaskListId !== -1 }
             }
         
         case ActionTypes.START_PROJECTLAYOUTS_FETCH:
@@ -357,7 +353,9 @@ export function appReducer(state, action) {
         
         case ActionTypes.SELECT_PROJECT:
             var filteredTaskLists = filterTaskListsByProject(state.taskLists, action.projectId);
-            var focusedTaskListId = action.value === -1 ? -1 : maybeForceFocusTaskList(state.focusedTaskListId, filteredTaskLists);
+            // We Provide -1 as the existing value to maybeForceFocusTaskList because we want it to defocus the List if there are no lists
+            // to Focus On. This Occurs when Changing Project selection from one with Lists to one without any lists.
+            var focusedTaskListId = action.value === -1 ? -1 : maybeForceFocusTaskList(-1 , filteredTaskLists); 
 
             return {
                 ...state,
@@ -1105,7 +1103,7 @@ function getSelectedProjectLayout(projectId, members, projectLayoutsMap) {
   }
 
   function maybeForceFocusTaskList(existingValue, filteredTaskLists) {
-      if (filteredTaskLists.length === 1) {
+      if (filteredTaskLists.length >= 1) {
           return filteredTaskLists[0].uid;
       }
 
