@@ -463,7 +463,6 @@ export function appReducer(state, action) {
         
         case ActionTypes.RECEIVE_GENERAL_CONFIG: {
             if (isFirstTimeBoot(action.value)) {
-                console.log("First TIme Boot");
                 // First Time Boot.
                 return {
                     ...state,
@@ -476,7 +475,6 @@ export function appReducer(state, action) {
 
             if (hasBeenUpdated(action.value) === true && state.isOnboarding === false) {
                 // App has just updated.
-                console.log("Updated");
                 return {
                     ...state,
                     generalConfig: action.value,
@@ -1113,11 +1111,8 @@ function getSelectedProjectLayout(projectId, members, projectLayoutsMap) {
   }
 
   function hasBeenUpdated(generalConfig) {
-    if (generalConfig.appVersion === undefined) {
+    if (generalConfig.appVersion === undefined || generalConfig.appVersion !== HANDBALL_VERSION) {
       return true;
-
-      // In future.
-      // generalConfig.appVersion !== HANDBALL_VERSION
     }
 
     else {

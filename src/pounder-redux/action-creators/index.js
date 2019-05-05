@@ -2498,6 +2498,8 @@ export function getGeneralConfigAsync() {
                 if (getState().isStartingUp) {
                     // Application is Starting up. Dispatch Actions to Sync appliction to Config State.
                     syncAppToConfig(config, dispatch);
+                    
+
                 }
             }
 
